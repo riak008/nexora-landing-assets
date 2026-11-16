@@ -87,7 +87,7 @@
     });
   }
   function verseWords(s, a) {
-    return getJSON(QCOM + 'verses/by_key/' + s + ':' + a + '?words=true&word_fields=text_uthmani&word_translation_language=bn', true).then(function (j) {
+    return getJSON(QCOM + 'verses/by_key/' + s + ':' + a + '?language=bn&words=true&word_fields=text_uthmani&word_translation_language=bn', true).then(function (j) {
       return ((j.verse && j.verse.words) || []).filter(function (w) { return w.char_type_name === 'word'; }).map(function (w) {
         return { pos: w.position, ar: w.text_uthmani || w.text, bn: w.translation && w.translation.text, tl: w.transliteration && w.transliteration.text, audio: w.audio_url ? WBW + w.audio_url : null };
       });
@@ -764,15 +764,56 @@
       }).catch(next);
     })();
   }
+
+  /* ------------------------------------------------------------ word broken into letters (হরফ ভেঙে ভেঙে) */
+  var MARKS = /[ً-ٰٟۖ-ۭٓ-ٕ]/;
+  function clusters(w) {
+    var out = [];
+    Array.from(String(w)).forEach(function (ch) {
+      if (MARKS.test(ch) && out.length) out[out.length - 1] += ch;
+      else if (ch !== 'ـ' && ch.trim()) out.push(ch);
+    });
+    return out;
+  }
+  function clusterBn(cl, prev) {
+    var base = cl.charAt(0), b = baseLetters(base) || base, k;
+    if ('ٱ' === base) return prev ? '' : 'আ';            // hamzat al-wasl: silent in the middle
+    k = BNC[b === 'ة' ? 'ه' : b]; if (b === 'ة') k = 'ত'; if (k == null) k = '';
+    if (b === 'و') k = 'ও'; if (b === 'ي' || b === 'ى') k = 'ই';
+    var v = /َ|ٰ/.test(cl) ? 'া' : /ِ/.test(cl) ? 'ি' : /ُ/.test(cl) ? 'ু' : /ً/.test(cl) ? 'ান' : /ٍ/.test(cl) ? 'িন' : /ٌ/.test(cl) ? 'ুন' : /[ْۡ]/.test(cl) ? '্' : '';
+    if (!k) { var full = { 'া': 'আ', 'ি': 'ই', 'ু': 'উ', 'ান': 'আন', 'িন': 'ইন', 'ুন': 'উন', '্': '', '': (b === 'ا' || b === 'ى' ? '—' : 'আ') }; return full[v]; }
+    if (!v && (b === 'ا' || b === 'و' || b === 'ي' || b === 'ى')) return '—'; // madd letter: stretch the sound before it
+    var dbl = /ّ/.test(cl) ? k + '্' : '';
+    if (v === '্' && (b === 'و' || b === 'ي')) return k;
+    return dbl + k + (v === '্' ? '্' : v);
+  }
+  function spellPanel(box, w) {
+    var cls = clusters(w.ar);
+    box.innerHTML = '<div class="nld-spell"><div class="nld-spell-w nld-ar" dir="rtl">' + esc(w.ar) + '</div>' + (w.bn ? '<small>' + esc(w.bn) + (w.tl ? ' · ' + esc(w.tl) : '') + '</small>' : '') +
+      '<div class="nld-spell-row" dir="rtl">' + cls.map(function (c, i) { return '<button class="nld-cell" data-sp="' + i + '"><span class="nld-ar">' + esc(c) + '</span><small>' + (clusterBn(c, i > 0) || '·') + '</small></button>'; }).join('') + '</div>' +
+      '<div class="nld-gbar"><button class="nld-gplay">🔤 হরফ ভেঙে ভেঙে শুনুন</button><button data-full="1">▶ পুরো শব্দ (ক্বারী)</button><button class="nld-gstop">⏹</button></div></div>';
+    var cells = $$('[data-sp]', box);
+    cells.forEach(function (b) { b.onclick = function () { guide([{ cell: b, ar: cls[+b.getAttribute('data-sp')], gap: 0 }]); }; });
+    $('[data-full]', box).onclick = function () { guide([{ url: w.audio }]); };
+    $('.nld-gstop', box).onclick = function () { guideToken = null; stopAll(); };
+    $('.nld-gplay', box).onclick = function () {
+      var steps = [{ bn: 'হরফ ভেঙে ভেঙে পড়ি, শুনুন আর সাথে বলুন।', gap: 400 }];
+      cls.forEach(function (c, i) { if (clusterBn(c, i > 0) !== '') steps.push({ cell: cells[i], ar: c, gap: 700 }); });
+      steps.push({ bn: 'এবার পুরো শব্দ একসাথে।', gap: 300 });
+      if (w.audio) steps.push({ url: w.audio, gap: 600 }); else steps.push({ ar: w.ar });
+      guide(steps);
+    };
+    try { box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+  }
   function exampleWords(box, keys) {
     box.innerHTML = '';
     keys.forEach(function (key) {
       var p = key.split(':');
-      var row = el('<div class="nld-exrow"><small>' + bn(key) + '</small><div class="nld-wrow" dir="rtl"><span class="nld-load">…</span></div></div>');
+      var row = el('<div class="nld-exrow"><small>' + bn(key) + ' · শব্দে চাপলে শুনবেন, আর হরফ ভেঙে পড়া শিখবেন</small><div class="nld-wrow" dir="rtl"><span class="nld-load">…</span></div><div class="nld-spbox"></div></div>');
       box.appendChild(row);
       verseWords(+p[0], +p[1]).then(function (ws) {
         $('.nld-wrow', row).innerHTML = ws.map(function (w, i) { return '<button class="nld-w" data-i="' + i + '"><span class="nld-ar">' + esc(w.ar) + '</span><small dir="ltr">' + esc(w.bn || '') + '</small></button>'; }).join('');
-        $$('.nld-w', row).forEach(function (b) { b.onclick = function () { stopAll(); playUrl(ws[+b.getAttribute('data-i')].audio); }; });
+        $$('.nld-w', row).forEach(function (b) { b.onclick = function () { var w = ws[+b.getAttribute('data-i')]; stopAll(); playUrl(w.audio); spellPanel($('.nld-spbox', row), w); }; });
       }).catch(function () { $('.nld-wrow', row).textContent = 'লোড করা যায়নি'; });
     });
   }
@@ -784,10 +825,10 @@
     Promise.all(keys.map(function (a) { return verseWords(s, a); })).then(function (all) {
       box.innerHTML = controls() + all.map(function (ws, i) {
         return '<div class="nld-exrow"><div class="nld-prhead"><b>আয়াত ' + bn(i + 1) + '</b><button data-slow="' + i + '">🐢 সব শব্দ ধীরে</button><button data-full="' + (i + 1) + '">▶ পুরো আয়াত</button><button data-ok="' + (i + 1) + '">✅ পেরেছি</button></div><div class="nld-wrow" dir="rtl">' +
-          ws.map(function (w, j) { return '<button class="nld-w" data-v="' + i + '" data-j="' + j + '"><span class="nld-ar">' + esc(w.ar) + '</span><small dir="ltr">' + esc(w.tl || '') + '</small></button>'; }).join('') + '</div></div>';
+          ws.map(function (w, j) { return '<button class="nld-w" data-v="' + i + '" data-j="' + j + '"><span class="nld-ar">' + esc(w.ar) + '</span><small dir="ltr">' + esc(w.tl || '') + '</small></button>'; }).join('') + '</div><div class="nld-spbox" data-spv="' + i + '"></div></div>';
       }).join('');
       bindControls(box);
-      $$('.nld-w', box).forEach(function (b) { b.onclick = function () { stopAll(); playUrl(all[+b.getAttribute('data-v')][+b.getAttribute('data-j')].audio); }; });
+      $$('.nld-w', box).forEach(function (b) { b.onclick = function () { var vi = b.getAttribute('data-v'), w = all[+vi][+b.getAttribute('data-j')]; stopAll(); playUrl(w.audio); spellPanel($('[data-spv="' + vi + '"]', box), w); }; });
       $$('[data-full]', box).forEach(function (b) { b.onclick = function () { playQueue([{ s: s, a: +b.getAttribute('data-full') }], 0); }; });
       $$('[data-ok]', box).forEach(function (b) { b.onclick = function () { var p = store('practice') || {}; p[s + ':' + b.getAttribute('data-ok')] = (p[s + ':' + b.getAttribute('data-ok')] || 0) + 1; store('practice', p); b.textContent = '✅ ' + bn(p[s + ':' + b.getAttribute('data-ok')]) + ' বার'; }; });
       $$('[data-slow]', box).forEach(function (b) {

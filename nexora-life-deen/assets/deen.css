@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Hind+Siliguri:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Hind+Siliguri:wght@400;600;700&display=swap');
 .nld{--g:#0b6b5f;--g2:#0f9d8a;--bg:#fff;--soft:#effaf7;--line:#cfe6e0;--tx:#0b1f1c;--mu:#3f5652;font-family:"Hind Siliguri","Plus Jakarta Sans",system-ui,sans-serif;color:var(--tx);background:#f6faf9;border-radius:18px;max-width:980px;margin:0 auto;padding:10px 10px 110px;font-size:16px;line-height:1.5}
 .nld *{box-sizing:border-box}
 .nld button{font:inherit;cursor:pointer}
@@ -281,3 +281,18 @@
 .nld,.nld *{box-sizing:border-box}
 .nld-view{overflow-x:hidden}
 @media(max-width:420px){.nld-letters{grid-template-columns:repeat(4,1fr)}.nld-letters button .nld-ar{font-size:26px}.nlh-grid{grid-template-columns:repeat(4,1fr)}.nlh-times{gap:4px}.nlh-times small{font-size:11px}.nld-tabs{overflow-x:auto;flex-wrap:nowrap}}
+
+.nld-spell{margin:10px 0 4px;padding:12px;border-radius:14px;background:#f0fdf4;border:1px dashed #86efac;text-align:center}
+.nld-spell-w{font-size:40px;line-height:2.2}
+.nld-spell>small{display:block;color:#475569;margin-bottom:6px}
+.nld-spell-row{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:8px 0}
+.nld-spell-row .nld-cell{min-width:64px}
+.nld-spell .nld-gbar{justify-content:center}
+
+/* clear Bangla type everywhere in the panel (Arabic keeps its Quran font) */
+.nld,.nld *:not(.nld-ar):not(.nld-ar *):not(.nld-tok),.nld-bar,.nld-toast{font-family:"Noto Sans Bengali","Hind Siliguri",system-ui,sans-serif!important;letter-spacing:0}
+.nld{font-size:16.5px;line-height:1.65;color:#0b1f1c}
+.nld small{font-size:13.5px!important;color:#334155}
+.nld p,.nld li{color:#1e293b}
+.nld-lbody{font-size:16.5px;line-height:1.8}
+.nld .nld-ar,.nld .nld-ar *,.nld .nld-tok{font-family:"Amiri Quran","KFGQPC Uthmanic Script HAFS","Scheherazade New","Traditional Arabic",serif!important}
