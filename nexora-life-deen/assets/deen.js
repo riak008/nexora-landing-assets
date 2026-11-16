@@ -177,7 +177,7 @@
     if (!rid) { playUrl(ayahUrl(it.s, it.a), ayahUrl(it.s, it.a, true)); return; }
     var done = false;
     var fallback = setTimeout(function () { if (!done && queue === token) { done = true; playUrl(ayahUrl(it.s, it.a), ayahUrl(it.s, it.a, true)); } }, 2500);
-    getJSON(QCOM + 'recitations/' + rid + '/by_ayah/' + it.s + ':' + it.a, false).then(function (j) {
+    getJSON(QCOM + 'recitations/' + rid + '/by_ayah/' + it.s + ':' + it.a + '?fields=segments', false).then(function (j) {
       if (done || queue !== token) return;
       var f = j.audio_files && j.audio_files[0];
       if (!f || !f.url) throw new Error('no audio');
@@ -188,16 +188,32 @@
   }
   var QCOM_RECITER = { Alafasy_128kbps: 7, Abdul_Basit_Murattal_192kbps: 2, Husary_128kbps: 6, Minshawy_Murattal_128kbps: 9 };
   var segs = null, litWord = null;
-  player.addEventListener('timeupdate', function () {
-    if (!segs || !segs.list.length) return;
+  // karaoke: follow the voice word by word (smooth, every animation frame) and keep the word in view
+  var rafOn = false;
+  function lightTick() {
+    if (!segs || !segs.list.length || player.paused) { rafOn = false; return; }
     var ms = player.currentTime * 1000, pos = 0;
-    for (var i = 0; i < segs.list.length; i++) { var g = segs.list[i]; if (ms >= g[1] && ms < g[2] + 120) { pos = g[0]; break; } }
-    var el = pos ? document.querySelector('#nld-v-' + segs.a + ' .nld-tok[data-w="' + pos + '"]') : null;
-    if (el === litWord) return;
-    if (litWord) litWord.classList.remove('lit');
-    litWord = el;
-    if (el && document.querySelector('#nld-v-' + segs.a) && document.querySelector('#nld-v-' + segs.a).getAttribute('data-s') == segs.s) el.classList.add('lit');
-  });
+    for (var i = 0; i < segs.list.length; i++) { var g = segs.list[i]; if (ms >= g[1] - 60 && ms < g[2] + 150) { pos = g[0]; break; } if (ms >= g[2]) pos = g[0]; }
+    var v = document.querySelector('#nld-v-' + segs.a);
+    if (v && v.getAttribute('data-s') != segs.s) v = null;
+    var el = (pos && v) ? v.querySelector('.nld-tok[data-w="' + pos + '"]') : null;
+    if (el !== litWord) {
+      if (litWord) { litWord.classList.remove('lit'); litWord.classList.add('read'); }
+      litWord = el;
+      if (el) {
+        el.classList.add('lit'); el.classList.remove('read');
+        var r = el.getBoundingClientRect();
+        if (r.top < 90 || r.bottom > window.innerHeight - 170) { try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }
+      }
+    }
+    requestAnimationFrame(lightTick);
+  }
+  function startLight() {
+    document.querySelectorAll('.nld-tok.read,.nld-tok.lit').forEach(function (x) { if (!segs || !x.closest('#nld-v-' + segs.a)) x.classList.remove('read', 'lit'); });
+    if (!rafOn) { rafOn = true; requestAnimationFrame(lightTick); }
+  }
+  player.addEventListener('play', startLight);
+  player.addEventListener('playing', startLight);
   player.addEventListener('ended', function () {
     if (!queue) { updateBar(); return; }
     var it = queue.list[queue.i];
@@ -213,7 +229,7 @@
   player.addEventListener('play', function () { native('keepAwake', true); updateBar(); });
   player.addEventListener('pause', function () { if (!queue) native('keepAwake', false); updateBar(); });
   function native(fn, arg) { var N = window.NexoraLifeNative; try { if (N && N[fn]) N[fn](arg); } catch (e) {} }
-  function stopAll() { segs = null; if (litWord) { litWord.classList.remove('lit'); litWord = null; } queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
+  function stopAll() { guideToken = null; segs = null; if (litWord) { litWord.classList.remove('lit'); litWord = null; } queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
   function setSpeed(v) { settings.speed = v; saveSettings(); player.playbackRate = v; $$('.nld-speed').forEach(function (s) { s.value = String(v); }); }
 
   var bar = null;
@@ -239,25 +255,30 @@
     return LATIN;
   }
   /** Longest name found wins ("আলাক" is not "আলা", "an-nasr" is not "an-nas"). */
-  function surahByName(t) {
+  function surahByName(t, strict) {
     var said = /সূরা|surah|sura/.test(t);
     var bnT = norm(t), laT = String(t).toLowerCase().replace(/[^a-z]/g, '').replace(/(.)\1+/g, '$1').replace(/o/g, 'u').replace(/e/g, 'i').replace(/q/g, 'k');
     var best = 0, len = 0;
     Object.keys(NAMES).forEach(function (n) { NAMES[n].forEach(function (al) { if (/[a-z]/.test(al)) return; al = norm(al); if (al.length > len && (said || al.length >= 3) && bnT.indexOf(al) >= 0) { best = +n; len = al.length; } }); });
-    var L = latinNames();
-    Object.keys(L).forEach(function (n) { if (n === '_full') return; L[n].forEach(function (al) { if (al.length > len && (said || al.length >= 3) && laT.indexOf(al) >= 0) { best = +n; len = al.length; } }); });
+    var L = latinNames(), words = [];
+    // strict (no "সূরা" said): an English name must be a whole word, "alarm" is not "al-a'la"
+    if (strict) { var ws = String(t).toLowerCase().split(/[^a-z'’-]+/).filter(Boolean); ws.forEach(function (w, i) { words.push(latin(w)); if (ws[i + 1]) words.push(latin(w + '-' + ws[i + 1])); }); }
+    Object.keys(L).forEach(function (n) { if (n === '_full') return; L[n].forEach(function (al) { if (al.length > len && (said || al.length >= 3) && (strict ? words.indexOf(al) >= 0 : laT.indexOf(al) >= 0)) { best = +n; len = al.length; } }); });
     return best;
   }
-  var NUMW = '(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|তম|number|num|no\\.?|nong|nombor|th)?';
+  var NUMW = '(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|তম|number|num|no\\.?|nong|nombor|nambar|nmbr|nom|th)?';
   function parseCommand(text) {
     var t = en(String(text || '').toLowerCase().replace(/য়/g, 'য়'));
-    t = t.replace(/সুরা|ছুরা|ছূরা/g, 'সূরা').replace(/আইয়াত|আয়াতের/g, 'আয়াত').replace(/\b(surah|surat|sura|shura)\b/g, 'সূরা').replace(/\b(ayat|ayah|aayat|ayaat|ayath|verse)\b/g, 'আয়াত');
+    t = t.replace(/সুরা|ছুরা|ছূরা/g, 'সূরা').replace(/আইয়াত|আয়াতের/g, 'আয়াত').replace(/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayat?u?l\s*kursi|\bkursi\b|কুরসি/g, ' kursi255 ').replace(/\b(su+r+a+h?|surat|surar|surahr|surah?er|shu+r+a+h?|sora+h?|sure|surae)\b/g, 'সূরা').replace(/\b(a+y+a+t+h?|ayah|aiat|ayet|ayot|ayater|ayate|ayatta|ayat?ta|aayat|ayaat|ayath|verse)\b/g, 'আয়াত');
+    if (/kursi255/.test(t)) return { kind: 'ayah', surah: 2, ayah: 255 };
     if (/হাদিস|হাদীস|hadith|hadis/.test(t) || /(বুখারী|বুখারি|তিরমিযী|তিরমিজি|bukhari|tirmidhi|tirmizi)/.test(t)) {
       var books = { bukhari: /(বুখারী|বুখারি|বোখারী|bukhari|bokhari)/, muslim: /(মুসলিম|muslim)/, tirmidhi: /(তিরমিযী|তিরমিজি|তিরমিজী|তিরমিযি|tirmidhi|tirmizi)/ };
       for (var k in books) { var m0 = t.match(/(\d{1,4})/); if (books[k].test(t) && m0) return { kind: 'hadith', book: k, number: +m0[1] }; }
     }
     if ((/আযান|আজান|সেহরি|সাহরি|ইফতার|ওয়াক্ত|prayer time|azan|ajan/.test(t) || (/নামাজ|নামায|namaz|namaj/.test(t) && /সময়|কখন|সূচি|time|somoy/.test(t))) && !/সূরা|আয়াত|রিমাইন্ডার|reminder|অ্যালার্ম দাও/.test(t)) return { kind: 'prayer' };
     var isQ = /সূরা|আয়াত|কুরআন|কোরআন|quran|koran|তিলাওয়াত|তেলাওয়াত|tilawat|telawat/.test(t) || /^\s*\d{1,3}\s*[:।]\s*\d{1,3}\s*$/.test(t);
+    // a surah name plus "read / play" is enough: "fatiha poro", "ইয়াসিন শোনাও"
+    if (!isQ && (new RegExp('পড|শোনা|শুনা|শুনাও|তিলাওয়াত|তেলাওয়াত|\\b(poro|poren|porun|portesi|shunao|sunao|sonao|shonao|shunau|sunau|tilawat|telawat|telwat|tilwat|recite|play|chalao|calao)\\b').test(t) || /\d/.test(t)) && surahByName(t, true)) isQ = true;
     if (!isQ) return null;
     var s = 0, a = 0, m;
     if (/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayatul\s*kursi|আয়াতul\s*kursi/.test(t)) return { kind: 'ayah', surah: 2, ayah: 255 };
@@ -270,7 +291,10 @@
       var re = new RegExp('(\\d{1,3})\\s*' + NUMW + '\\s*আয়াত', 'g'), mm;
       while ((mm = re.exec(t))) { if (mm.index !== sAt) { a = +mm[1]; break; } }
       if (!a && (m = t.match(new RegExp('আয়াত\\s*' + NUMW + '\\s*(\\d{1,3})'))) && m.index + m[0].indexOf(m[1]) !== sAt) a = +m[1];
-      if (!s) s = surahByName(t);
+      var byName = false;
+      if (!s) { s = surahByName(t); byName = !!s; }
+      // "সূরা বাকারা ২৫৫": a name and one bare number — the number is the ayah
+      if (byName && !a) { var ns = t.match(/\d{1,3}/g) || []; if (ns.length === 1) a = +ns[0]; }
       // two numbers and only one known: the other one is the surah
       if (!s && a) { var nums = (t.match(/\d{1,3}/g) || []).map(Number); var rest = nums.filter(function (x) { return x !== a; }); if (rest.length === 1) s = rest[0]; }
     }
@@ -280,12 +304,12 @@
   }
 
   /* ------------------------------------------------------------ shell */
-  var root = null, view = null, state = { tab: 'namaz' };
+  var root = null, view = null, state = { tab: 'home' };
 
   function panel() {
     // data-nt: the hub machine-translates Bangla text when its language is not Bangla; Quran, hadith and lessons stay as written
     root = el('<div class="nld" data-nt="1"><div class="nld-tabs">' +
-      [['namaz', '🕌', 'নামাজ'], ['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদিস'], ['learn', '🎓', 'শিখুন'], ['quiz', '❓', 'কুইজ'], ['settings', '⚙️', 'সেটিংস']].map(function (t) {
+      [['home', '🏠', 'হোম'], ['namaz', '🕌', 'নামাজ'], ['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদিস'], ['learn', '🎓', 'শিখুন'], ['quiz', '❓', 'কুইজ'], ['settings', '⚙️', 'সেটিংস']].map(function (t) {
         return '<button data-dt="' + t[0] + '"><span>' + t[1] + '</span>' + t[2] + '</button>';
       }).join('') + '</div><form class="nld-ask"><input placeholder="যেমন: ২ নম্বর সূরার ২৫৫ নম্বর আয়াত, সূরা ইয়াসিন, বুখারী ১" aria-label="কী শুনতে চান"><button>খুঁজুন</button></form><div class="nld-view"></div></div>');
     view = $('.nld-view', root);
@@ -301,7 +325,7 @@
     state.tab = tab;
     $$('[data-dt]', root).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-dt') === tab); });
     view.innerHTML = '';
-    ({ namaz: viewNamaz, quran: viewQuran, hadith: viewHadith, learn: viewLearn, quiz: viewQuiz, settings: viewSettings }[tab] || viewQuran)(view, arg);
+    ({ home: viewHome, namaz: viewNamaz, quran: viewQuran, hadith: viewHadith, learn: viewLearn, quiz: viewQuiz, settings: viewSettings }[tab] || viewQuran)(view, arg);
   }
   function loading(v) { v.innerHTML = '<div class="nld-load">লোড হচ্ছে…</div>'; }
   function fail(v, e) { v.innerHTML = '<div class="nld-err">লোড করা যায়নি (' + esc(e && e.message) + ')। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।</div>'; }
@@ -538,32 +562,182 @@
     { id: 'waqf', t: '১২. থামার চিহ্ন (ওয়াকফ)', body: '<ul><li>আয়াতের শেষে গোল চিহ্ন ﴿ ﴾ — থামা উত্তম।</li><li>م — অবশ্যই থামতে হবে।</li><li>لا — থামবেন না।</li><li>ج — থামা বা না থামা দুটোই চলে।</li><li>صلى — না থেমে মিলিয়ে পড়া উত্তম।</li><li>قلى — থামা উত্তম।</li><li>∴ ∴ (তিন বিন্দু দুই জায়গায়) — যেকোনো একটায় থামুন, দুটোতে নয়।</li></ul><p>থামলে শেষ হরফের হরকত বাদ দিয়ে সাকিন করে পড়তে হয়; দুই যবর থামলে "আ" হয়ে যায়।</p>', ex: ['2:2', '1:5'] }
   ];
   var PRACTICE = [[1, 'সূরা আল-ফাতিহা'], [112, 'সূরা আল-ইখলাস'], [113, 'সূরা আল-ফালাক'], [114, 'সূরা আন-নাস'], [108, 'সূরা আল-কাওসার'], [103, 'সূরা আল-আসর'], [110, 'সূরা আন-নাসর'], [109, 'সূরা আল-কাফিরুন']];
+  var LESSON_GUIDE = {"harakat": [["قُلْ — ক্বাফে পেশ, তাই কু; লাম সাকিন, তাই কুল।", "112:1", 1], ["هُوَ — হা-তে পেশ হু, ওয়াও-তে যবর ওয়া: হুওয়া।", "112:1", 2]], "tanween": [["أَحَدٌ — শেষে দুই পেশ, তাই আহাদুন। থামলে আহাদ।", "112:4", 5], ["كُفُوًا — দুই যবর: কুফুওয়ান।", "112:4", 4]], "sukun": [["ٱلْحَمْدُ — লাম আর মীম সাকিন: আল-হাম-দু।", "1:2", 1]], "shadda": [["رَبِّ — বা-তে তাশদীদ: রাব-বি।", "1:2", 3], ["إِنَّا — নূনে তাশদীদ, তাই দুই হরকত গুন্নাহ: ইন্না।", "108:1", 1]], "madd": [["مَٰلِكِ — মীমের পর খাড়া যবর, দুই হরকত টানুন: মা—লিকি।", "1:4", 1], ["ٱلضَّآلِّينَ — মাদ্দের পর তাশদীদ, তাই মাদ্দে লাযিম, ছয় হরকত টানুন।", "1:7", 9]], "noon": [["يَكُن لَّهُۥ — নূন সাকিনের পর লাম, গুন্নাহ ছাড়া ইদগাম: ইয়াকুল্লাহু।", "112:4", 2], ["كُفُوًا أَحَدٌ — তানভীনের পর হামযা, ইযহার: পরিষ্কার নূন।", "112:4", 4], ["لَهَبٍ وَتَبَّ — তানভীনের পর ওয়াও, গুন্নাহসহ ইদগাম।", "111:1", 4], ["لَيُنۢبَذَنَّ — নূন সাকিনের পর বা, ইকলাব: নূন মীম হয়ে যায়।", "104:4", 2], ["مِّن سِجِّيلٍ — নূন সাকিনের পর সীন, ইখফা: নাকে লুকিয়ে পড়ুন।", "105:4", 3]], "meem": [["تَرْمِيهِم بِحِجَارَةٍ — মীম সাকিনের পর বা, ইখফা শাফাবি।", "105:4", 1], ["أَطْعَمَهُم مِّن — মীম সাকিনের পর মীম, ইদগাম মিসলাইন।", "106:4", 2], ["عَلَيْهِمْ غَيْرِ — মীম সাকিনের পর গাইন, ইযহার শাফাবি: পরিষ্কার মীম।", "1:7", 4]], "qalqala": [["ٱلْفَلَقِ — শেষে ক্বাফে থামলে ক্বলক্বলা: ফালাক্ব।", "113:1", 3], ["ٱلصَّمَدُ — শেষে দালে থামলে ক্বলক্বলা: সামাদ।", "112:2", 2]], "allah": [["بِسْمِ ٱللَّهِ — আগে যের, তাই আল্লাহর লাম চিকন।", "1:1", 2], ["هُوَ ٱللَّهُ — আগে যবর, তাই লাম মোটা।", "112:1", 3]]};
+  /* ------------------------------------------------------------ Qaida (Noorani style) with voice */
+  var ARNAMES = ['أَلِف', 'بَاء', 'تَاء', 'ثَاء', 'جِيم', 'حَاء', 'خَاء', 'دَال', 'ذَال', 'رَاء', 'زَاي', 'سِين', 'شِين', 'صَاد', 'ضَاد', 'طَاء', 'ظَاء', 'عَيْن', 'غَيْن', 'فَاء', 'قَاف', 'كَاف', 'لَام', 'مِيم', 'نُون', 'وَاو', 'هَاء', 'هَمْزَة', 'يَاء'];
+  var BNC = { 'ا': '', 'ب': 'ব', 'ت': 'ত', 'ث': 'ছ', 'ج': 'জ', 'ح': 'হ', 'خ': 'খ', 'د': 'দ', 'ذ': 'য', 'ر': 'র', 'ز': 'য', 'س': 'স', 'ش': 'শ', 'ص': 'স', 'ض': 'দ', 'ط': 'ত', 'ظ': 'য', 'ع': '', 'غ': 'গ', 'ف': 'ফ', 'ق': 'ক', 'ك': 'ক', 'ل': 'ল', 'م': 'ম', 'ن': 'ন', 'و': 'ওয়', 'ه': 'হ', 'ء': '', 'ي': 'ইয়' };
+  var NOJOIN = 'اأدذرزوء';
+  var DRILL_LETTERS = LETTERS.map(function (x) { return x[0]; }).filter(function (c) { return c !== 'ا'; }).map(function (c) { return c === 'ء' ? 'أ' : c; });
+  // Bangla reading of a syllable: consonant + vowel sign
+  function bnSyl(c, v) {
+    var k = BNC[c === 'أ' ? 'ء' : c];
+    var full = { a: 'আ', i: 'ই', u: 'উ', aa: 'আ—', ii: 'ঈ—', uu: 'ঊ—' }, sign = { a: 'া', i: 'ি', u: 'ু', aa: 'া—', ii: 'ী—', uu: 'ূ—' };
+    if (!k) return full[v];
+    if (/য়$/.test(k)) return k.replace(/^ও|^ই/, '') ? (k === 'ওয়' ? { a: 'ওয়া', i: 'উয়ি', u: 'উয়ু', aa: 'ওয়া—', ii: 'উয়ী—', uu: 'উয়ূ—' }[v] : { a: 'ইয়া', i: 'ইয়ি', u: 'ইয়ু', aa: 'ইয়া—', ii: 'ইয়ী—', uu: 'ইয়ূ—' }[v]) : full[v];
+    return k + sign[v];
+  }
+  var QAIDA = [
+    { id: 'q-forms', t: 'হরফের যুক্ত রূপ (মুরাক্কাবাত)', body: '<p>আরবি হরফ শব্দের শুরু, মাঝে আর শেষে একটু ভিন্ন আকারে লেখা হয়, কিন্তু উচ্চারণ একই থাকে। ا د ذ ر ز و — এই ছয়টি হরফ পরের হরফের সাথে জোড়া লাগে না। প্রতিটা ঘরে চাপলে হরফের নাম আরবিতে শুনবেন।</p>', forms: true },
+    { id: 'q-muqattaat', t: 'হুরুফে মুকাত্তাআত', body: '<p>কিছু সূরার শুরুতে আলাদা আলাদা হরফ থাকে — এগুলো মিলিয়ে নয়, প্রতিটা হরফের <b>নাম</b> ধরে পড়তে হয়। যেমন الٓمٓ = আলিফ-লাম-মীম। চাপলে ক্বারীর কণ্ঠে শুনবেন।</p>', muq: true },
+    { id: 'q-fatha', t: 'যবর, যের, পেশ অনুশীলন', body: '<p>প্রতিটা হরফ তিন হরকতে: যবরে "আ", যেরে "ই", পেশে "উ"। ঝটকা দিয়ে, না টেনে পড়ুন। ঘরে চাপলে উচ্চারণ শুনবেন; "গাইডসহ শুনুন" চাপলে বাংলায় নিয়ম বলে একে একে সব পড়ে শোনাবে।</p>', drill: { v: [['َ', 'a'], ['ِ', 'i'], ['ُ', 'u']] }, say: 'যবর হলে আ, যের হলে ই, পেশ হলে উ। ঝটকা দিয়ে পড়ুন, টানবেন না। এখন শুনুন আর সাথে সাথে বলুন।' },
+    { id: 'q-tanween', t: 'তানভীন অনুশীলন', body: '<p>দুই যবর "আন", দুই যের "ইন", দুই পেশ "উন"। দুই যবরের পর সাধারণত একটা আলিফ লেখা থাকে, সেটা পড়া হয় না (থামলে "আ" হয়)।</p>', drill: { v: [['ًا', 'an'], ['ٍ', 'in'], ['ٌ', 'un']] }, say: 'দুই যবর হলে আন, দুই যের হলে ইন, দুই পেশ হলে উন। শুনুন আর সাথে বলুন।' },
+    { id: 'q-madd', t: 'মাদ্দ (টেনে পড়া) অনুশীলন', body: '<p>যবরের পর আলিফ, যেরের পর ইয়া সাকিন, পেশের পর ওয়াও সাকিন থাকলে আওয়াজ দুই হরকত (এক আলিফ) টেনে পড়তে হয়: بَا = বা—, بِي = বী—, بُو = বূ—।</p>', drill: { v: [['َا', 'aa'], ['ِي', 'ii'], ['ُو', 'uu']] }, say: 'যবরের পর আলিফ, যেরের পর ইয়া, পেশের পর ওয়াও থাকলে দুই হরকত টেনে পড়তে হয়। শুনুন।' },
+    { id: 'q-sukun', t: 'সাকিন (জযম) অনুশীলন', body: '<p>সাকিন হরফ আগের হরকতওয়ালা হরফের সাথে মিলিয়ে থামিয়ে পড়া হয়: أَبْ = আব্, إِبْ = ইব্, أُبْ = উব্। ক্বলক্বলার হরফ (ق ط ب ج د) সাকিন হলে হালকা প্রতিধ্বনি দিন।</p>', drill: { pre: true, v: [['ْ', 'a'], ['ْ', 'i'], ['ْ', 'u']] }, say: 'সাকিন হরফ আগের হরফের সাথে মিলিয়ে থামিয়ে পড়ুন। যেমন আলিফে যবর, বা সাকিন — আব্। শুনুন।' },
+    { id: 'q-shadda', t: 'তাশদীদ অনুশীলন', body: '<p>তাশদীদওয়ালা হরফ দুইবার পড়া হয়: প্রথমে আগের হরফের সাথে সাকিন হয়ে, তারপর নিজের হরকতে। أَبَّ = আব্‌বা, إِبِّ = ইব্‌বি, أُبُّ = উব্‌বু। নূন ও মীমে তাশদীদ হলে গুন্নাহ দুই হরকত।</p>', drill: { pre: true, shadda: true, v: [['َّ', 'a'], ['ِّ', 'i'], ['ُّ', 'u']] }, say: 'তাশদীদ মানে হরফ দুইবার। আগে সাকিন, তারপর হরকতসহ। যেমন আব্বা, ইব্বি, উব্বু। শুনুন।' },
+    { id: 'q-leen', t: 'লীন অনুশীলন', body: '<p>যবরের পর ওয়াও সাকিন বা ইয়া সাকিন হলে নরম করে পড়তে হয়: بَوْ = বাও, بَيْ = বাই। ক্বুরাইশ সূরার خَوْفٍ, بَيْتِ এর উদাহরণ।</p>', drill: { v: [['َوْ', 'aw'], ['َيْ', 'ay']] }, say: 'যবরের পর ওয়াও বা ইয়া সাকিন হলে নরম করে পড়ুন — বাও, বাই। শুনুন।' }
+  ];
+  var MUQ = [['الٓمٓ', 'আলিফ-লাম-মীম', 2, 1], ['الٓمٓصٓ', 'আলিফ-লাম-মীম-সোয়াদ', 7, 1], ['الٓر', 'আলিফ-লাম-রা', 10, 1], ['الٓمٓر', 'আলিফ-লাম-মীম-রা', 13, 1], ['كٓهيعٓصٓ', 'কাফ-হা-ইয়া-আইন-সোয়াদ', 19, 1], ['طه', 'ত্বোয়া-হা', 20, 1], ['طسٓمٓ', 'ত্বোয়া-সীন-মীম', 26, 1], ['طسٓ', 'ত্বোয়া-সীন', 27, 1], ['يسٓ', 'ইয়া-সীন', 36, 1], ['صٓ', 'সোয়াদ', 38, 1], ['حمٓ', 'হা-মীম', 40, 1], ['عٓسٓقٓ', 'আইন-সীন-ক্বাফ', 42, 2], ['قٓ', 'ক্বাফ', 50, 1], ['نٓ', 'নূন', 68, 1]];
+  function drillCells(d) {
+    var out = [];
+    DRILL_LETTERS.forEach(function (c) {
+      if (d.v[0][1] === 'aw' && c === 'أ') return;
+      var row = d.v.map(function (m) {
+        var ar, tl;
+        if (d.pre) {
+          if (c === 'أ') return null;
+          var lead = { a: 'أَ', i: 'إِ', u: 'أُ' }[m[1]];
+          ar = lead + c + (d.shadda ? m[0] : m[0]);
+          var k = BNC[c] || ''; if (c === 'و') k = 'ও'; if (c === 'ي') k = 'ই';
+          var V = { a: 'আ', i: 'ই', u: 'উ' }[m[1]], semi = c === 'و' || c === 'ي';
+          tl = d.shadda ? V + (semi ? k : k + '্') + bnSyl(c, m[1]) : V + (k ? (semi ? k : k + '্') : '');
+        } else if (/an|in|un/.test(m[1])) {
+          ar = c + m[0]; tl = bnSyl(c, m[1].charAt(0)) + 'ন';
+          if (m[1] === 'an' && 'ة'.indexOf(c) >= 0) ar = c + 'ً';
+        } else if (m[1] === 'aw' || m[1] === 'ay') {
+          ar = c + m[0]; tl = bnSyl(c, 'a') + (m[1] === 'aw' ? 'ও' : 'ই');
+        } else { ar = c + m[0]; tl = bnSyl(c, m[1]); }
+        return [ar, tl];
+      }).filter(Boolean);
+      if (row.length) out.push(row);
+    });
+    return out;
+  }
+  // Arabic voice: the app's Arabic engine (1.0.26+), else the browser's Arabic voice
+  function arVoice() { var v = window.speechSynthesis ? speechSynthesis.getVoices().filter(function (x) { return /^ar/i.test(x.lang); }) : []; return v[0] || null; }
+  function sayAr(text, done) {
+    done = done || function () {};
+    var N = window.NexoraLifeNative;
+    if (N && N.sayAr) {
+      var st = 0; try { st = N.arReady(); } catch (e) {}
+      if (st === 3) { toastOnce('ফোনে আরবি ভয়েস নেই: সেটিংস › ভাষা › টেক্সট-টু-স্পিচ থেকে Google-এর আরবি ভয়েস ডাউনলোড করুন।'); return done(); }
+      try { N.sayAr(text); } catch (e) { return done(); }
+      var t0 = Date.now();
+      (function wait() { setTimeout(function () { var busy = false; try { busy = N.speaking(); } catch (e) {} if ((busy || Date.now() - t0 < 700) && Date.now() - t0 < 15000) wait(); else done(); }, 250); })();
+      return;
+    }
+    if (!window.speechSynthesis) return done();
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ar-SA'; u.rate = Math.max(0.5, Math.min(1.2, 0.8 * settings.speed));
+    var vv = arVoice(); if (vv) u.voice = vv; else if (N && N.say) toastOnce('অ্যাপ আপডেট করুন (১.০.২৬ বা পরের) — তাহলে আরবি উচ্চারণ শোনা যাবে।');
+    u.onend = u.onerror = function () { done(); };
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }
+  var toasted = {};
+  function toastOnce(msg) { if (toasted[msg]) return; toasted[msg] = 1; var t = el('<div class="nld-toast">' + esc(msg) + '</div>'); document.body.appendChild(t); setTimeout(function () { t.remove(); }, 6000); }
+  // Plays steps one after another: {bn}, {ar}, {url}, {cell} to highlight
+  var guideToken = null;
+  function guide(steps) {
+    stopAll(); var token = {}; guideToken = token; var i = 0;
+    (function next() {
+      if (guideToken !== token) return;
+      $$('.nld-cell.lit,.nld-w.lit').forEach(function (x) { x.classList.remove('lit'); });
+      var s = steps[i++]; if (!s) { guideToken = null; return; }
+      if (s.cell) { s.cell.classList.add('lit'); try { s.cell.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
+      var after = function () { setTimeout(next, s.gap == null ? 500 : s.gap); };
+      if (s.bn) speakBn(s.bn, after);
+      else if (s.ar) sayAr(s.ar, after);
+      else if (s.url) { playUrl(s.url); var end = function () { player.removeEventListener('ended', end); after(); }; player.addEventListener('ended', end); }
+      else after();
+    })();
+  }
+  function qaidaBlock(v, l) {
+    var box = $('.nld-qaida', v); if (!box) return;
+    if (l.forms) {
+      box.innerHTML = '<div class="nld-forms">' + LETTERS.map(function (x, k) {
+        var c = x[0]; if (c === 'ء') return '';
+        var f = NOJOIN.indexOf(c) >= 0 ? [c, c, 'ـ' + c, 'ـ' + c] : [c, c + 'ـ', 'ـ' + c + 'ـ', 'ـ' + c];
+        return '<button class="nld-cell" data-k="' + k + '"><b>' + x[1] + '</b><span class="nld-ar" dir="rtl">' + f.join('  ') + '</span></button>';
+      }).join('') + '</div><p class="nld-hint">ক্রম: একা · শুরুতে · মাঝে · শেষে</p>';
+      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var k = +b.getAttribute('data-k'); guide([{ cell: b, ar: ARNAMES[k], gap: 0 }]); }; });
+    }
+    if (l.muq) {
+      box.innerHTML = '<div class="nld-muq">' + MUQ.map(function (m, i) { return '<button class="nld-cell" data-i="' + i + '"><span class="nld-ar">' + m[0] + '</span><small>' + m[1] + ' · সূরা ' + bn(m[2]) + '</small></button>'; }).join('') + '</div>';
+      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var m = MUQ[+b.getAttribute('data-i')]; guide([{ cell: b, url: ayahUrl(m[2], m[3]) }]); }; });
+    }
+    if (l.drill) {
+      var rows = drillCells(l.drill);
+      box.innerHTML = '<div class="nld-gbar"><button class="nld-gplay">▶ গাইডসহ শুনুন</button><button class="nld-gstop">⏹ থামাও</button></div><div class="nld-drill">' + rows.map(function (r, ri) {
+        return '<div class="nld-drow" dir="rtl">' + r.map(function (c, ci) { return '<button class="nld-cell" data-r="' + ri + '" data-c="' + ci + '"><span class="nld-ar">' + c[0] + '</span><small>' + c[1] + '</small></button>'; }).join('') + '</div>';
+      }).join('') + '</div>';
+      var cellOf = function (ri, ci) { return $('.nld-cell[data-r="' + ri + '"][data-c="' + ci + '"]', box); };
+      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var c = rows[+b.getAttribute('data-r')][+b.getAttribute('data-c')]; guide([{ cell: b, ar: c[0], gap: 0 }]); }; });
+      $('.nld-gstop', box).onclick = function () { guideToken = null; stopAll(); };
+      $('.nld-gplay', box).onclick = function () {
+        var steps = [{ bn: l.say, gap: 700 }];
+        rows.forEach(function (r, ri) { r.forEach(function (c, ci) { steps.push({ cell: cellOf(ri, ci), ar: c[0], gap: 900 }); }); });
+        guide(steps);
+      };
+    }
+  }
+  // spoken walk-through of a rule lesson: say where the rule is, then the qari reads that word
+  function ruleGuide(l, btn) {
+    var steps = [{ bn: $('.nld-lbody').innerText.replace(/[؀-ۿࢠ-ࣿ]+/g, ' '), gap: 600 }];
+    var jobs = (l.guide || []).map(function (g) { var p = g[1].split(':'); return verseWords(+p[0], +p[1]).then(function (ws) { return { g: g, w: ws[g[2] - 1] }; }).catch(function () { return null; }); });
+    btn.textContent = '⏳ তৈরি হচ্ছে…';
+    Promise.all(jobs).then(function (rs) {
+      btn.textContent = '🗣️ নিয়মসহ গাইড শোনাও';
+      rs.forEach(function (r) { if (r && r.w) { steps.push({ bn: r.g[0], gap: 300 }); steps.push({ url: r.w.audio, gap: 900 }); } });
+      guide(steps);
+    });
+  }
 
+  /* ------------------------------------------------------------ Ampara and the whole Quran, in order */
+  function viewAmpara(v) {
+    var p = store('practice') || {}, done = store('amDone') || {};
+    var list = []; for (var s = 78; s <= 114; s++) list.push(s);
+    var cnt = list.filter(function (s) { return done[s]; }).length;
+    v.innerHTML = '<button class="nld-back">← শিখুন</button><h3>ধাপ ২: আমপারা (৩০তম পারা)</h3><div class="nld-prog"><div style="width:' + Math.round(cnt / list.length * 100) + '%"></div></div><p class="nld-hint">' + bn(cnt) + '/' + bn(list.length) + ' সূরা শেষ। ছোট সূরা (১১৪ নং) থেকে শুরু করুন। "শব্দে শব্দে" চাপলে প্রতিটা শব্দ শুনে নিজে বলবেন; "পুরো তিলাওয়াত" চাপলে ক্বারীর সাথে সাথে শব্দ হাইলাইট হবে।</p><div class="nld-amlist">' +
+      list.slice().reverse().map(function (s) { var nm = (SURAHS && SURAHS[s - 1]) ? SURAHS[s - 1][2] || SURAHS[s - 1][1] : ''; return '<div class="nld-am"><b>' + (done[s] ? '✅ ' : '') + bn(s) + '. ' + esc(nm) + '</b><small>' + bn(COUNTS[s - 1]) + ' আয়াত</small><span><button data-pw="' + s + '">🐢 শব্দে শব্দে</button><button data-pf="' + s + '">▶ পুরো তিলাওয়াত</button><button data-pd="' + s + '">✅</button></span></div>'; }).join('') + '</div><div class="nld-prout"></div>';
+    $('.nld-back', v).onclick = function () { stopAll(); viewLearn(v); };
+    $$('[data-pw]', v).forEach(function (b) { b.onclick = function () { var o = $('.nld-prout', v); practice(o, +b.getAttribute('data-pw')); try { o.scrollIntoView({ behavior: 'smooth' }); } catch (e) {} }; });
+    $$('[data-pf]', v).forEach(function (b) { b.onclick = function () { run({ kind: 'surah', surah: +b.getAttribute('data-pf') }); }; });
+    $$('[data-pd]', v).forEach(function (b) { b.onclick = function () { var d = store('amDone') || {}; d[b.getAttribute('data-pd')] = Date.now(); store('amDone', d); viewAmpara(v); }; });
+  }
+
+  (function () { var at = 1; QAIDA.forEach(function (x, k) { LESSONS.splice(at + k, 0, x); }); LESSONS.forEach(function (l) { l.t = l.t.replace(/^[০-৯0-9]+\.\s*/, ''); l.guide = LESSON_GUIDE[l.id]; }); })();
   function progress() { return store('progress') || {}; }
   function markDone(id) { var p = progress(); p[id] = Date.now(); store('progress', p); }
 
   function viewLearn(v, arg) {
     if (arg && arg.lesson) return viewLesson(v, arg.lesson);
+    if (arg && arg.ampara) return viewAmpara(v);
     var p = progress();
     var done = LESSONS.filter(function (l) { return p[l.id]; }).length;
-    v.innerHTML = '<div class="nld-prog"><div style="width:' + Math.round(done / LESSONS.length * 100) + '%"></div></div><p class="nld-hint">' + bn(done) + '/' + bn(LESSONS.length) + ' পাঠ শেষ। ক্রম অনুযায়ী এগোন; প্রতিটা পাঠে লেখা গাইড, ক্বারীর কণ্ঠে উদাহরণ আর প্র্যাকটিস আছে। শেষে কুইজ দিয়ে যাচাই করুন।</p>' +
-      '<div class="nld-lessons">' + LESSONS.map(function (l) { return '<button data-l="' + l.id + '">' + (p[l.id] ? '✅ ' : '⬜ ') + l.t + '</button>'; }).join('') + '</div>' +
+    var am = store('amDone') || {}, amN = Object.keys(am).length;
+    v.innerHTML = '<div class="nld-steps"><div class="nld-step on"><b>ধাপ ১</b>কায়দা<small>' + bn(done) + '/' + bn(LESSONS.length) + '</small></div><div class="nld-step" data-go="ampara"><b>ধাপ ২</b>আমপারা<small>' + bn(amN) + '/৩৭</small></div><div class="nld-step" data-go="quran"><b>ধাপ ৩</b>পূর্ণ কুরআন<small>১১৪ সূরা</small></div></div>' +
+      '<h3>ধাপ ১: নূরানী কায়দা ও তাজবীদ</h3><div class="nld-prog"><div style="width:' + Math.round(done / LESSONS.length * 100) + '%"></div></div><p class="nld-hint">' + bn(done) + '/' + bn(LESSONS.length) + ' পাঠ শেষ। ক্রম অনুযায়ী এগোন: হরফ → হরকত → তানভীন → মাদ্দ → সাকিন → তাশদীদ → তাজবীদের নিয়ম। প্রতিটা পাঠে বাংলা ভয়েস গাইড, আরবি উচ্চারণ আর ক্বারীর কণ্ঠে উদাহরণ আছে।</p>' +
+      '<div class="nld-lessons">' + LESSONS.map(function (l, i) { return '<button data-l="' + l.id + '">' + (p[l.id] ? '✅ ' : '⬜ ') + bn(i + 1) + '. ' + l.t + '</button>'; }).join('') + '</div>' +
+      '<div class="nld-stepnext"><button data-go="ampara">📗 ধাপ ২: আমপারা শুরু করুন ›</button><button data-go="quran">📖 ধাপ ৩: পূর্ণ কুরআন ›</button></div>' +
       '<h4>🎧 প্র্যাকটিস: ছোট সূরা শব্দে শব্দে</h4><p class="nld-hint">প্রতিটা শব্দ শুনুন, তারপর নিজে বলুন। "সব শব্দ ধীরে" চাপলে পুরো আয়াত শব্দ ধরে ধরে বাজবে, প্রতি শব্দের পর আপনার বলার জন্য একটু বিরতি থাকবে।</p><div class="nld-lessons">' + PRACTICE.map(function (x) { return '<button data-pr="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div><div class="nld-prout"></div>';
     $$('[data-l]', v).forEach(function (b) { b.onclick = function () { viewLesson(v, b.getAttribute('data-l')); }; });
+    $$('[data-go]', v).forEach(function (b) { b.onclick = function () { stopAll(); if (b.getAttribute('data-go') === 'ampara') viewAmpara(v); else open('quran'); }; });
     $$('[data-pr]', v).forEach(function (b) { b.onclick = function () { practice($('.nld-prout', v), +b.getAttribute('data-pr')); }; });
   }
 
   function viewLesson(v, id) {
     var i = LESSONS.map(function (l) { return l.id; }).indexOf(id), l = LESSONS[i];
-    v.innerHTML = '<button class="nld-back">← সব পাঠ</button><h3>' + l.t + '</h3><div class="nld-lbody">' + l.body + '</div>' +
-      '<button class="nld-sayl">🗣️ গাইডটা বাংলায় পড়ে শোনাও</button>' +
+    v.innerHTML = '<button class="nld-back">← সব পাঠ</button><h3>' + bn(i + 1) + '. ' + l.t + '</h3><div class="nld-lbody">' + l.body + '</div>' +
+      '<div class="nld-gbar"><button class="nld-sayl">🗣️ ' + (l.guide ? 'নিয়মসহ গাইড শোনাও' : 'গাইডটা বাংলায় পড়ে শোনাও') + '</button><button class="nld-gstop2">⏹ থামাও</button></div>' +
+      ((l.forms || l.muq || l.drill) ? '<div class="nld-qaida"></div>' : '') +
       (l.letters ? '<div class="nld-letters" dir="rtl">' + LETTERS.map(function (x, k) { return '<button data-k="' + k + '" class="' + (HEAVY.indexOf(x[0]) >= 0 ? 'heavy' : '') + '"><span class="nld-ar">' + x[0] + '</span><small>' + x[1] + '</small></button>'; }).join('') + '</div><div class="nld-linfo"></div>' : '') +
       (l.ex ? '<h4>🎧 কুরআন থেকে উদাহরণ (শব্দে চাপুন)</h4><div class="nld-ex"></div>' : '') +
       '<div class="nld-lnav">' + (i > 0 ? '<button data-ln="' + LESSONS[i - 1].id + '">‹ আগের পাঠ</button>' : '') + '<button class="nld-done">✅ পাঠ শেষ</button>' + (i < LESSONS.length - 1 ? '<button data-ln="' + LESSONS[i + 1].id + '">পরের পাঠ ›</button>' : '<button data-quiz="1">কুইজ দিন ›</button>') + '</div>';
-    $('.nld-back', v).onclick = function () { stopAll(); viewLearn(v); };
-    $('.nld-sayl', v).onclick = function () { stopAll(); speakBn($('.nld-lbody', v).innerText.replace(/[؀-ۿࢠ-ࣿ]+/g, ' '), function () {}); };
+    $('.nld-back', v).onclick = function () { guideToken = null; stopAll(); viewLearn(v); };
+    $('.nld-sayl', v).onclick = function () { if (l.guide) ruleGuide(l, this); else guide([{ bn: $('.nld-lbody', v).innerText.replace(/[؀-ۿࢠ-ࣿ]+/g, ' ') }]); };
+    $('.nld-gstop2', v).onclick = function () { guideToken = null; stopAll(); };
+    qaidaBlock(v, l);
     $('.nld-done', v).onclick = function () { markDone(l.id); this.textContent = '✅ শেষ হিসেবে রাখা হলো'; };
-    $$('[data-ln]', v).forEach(function (b) { b.onclick = function () { stopAll(); viewLesson(v, b.getAttribute('data-ln')); }; });
+    $$('[data-ln]', v).forEach(function (b) { b.onclick = function () { guideToken = null; stopAll(); viewLesson(v, b.getAttribute('data-ln')); }; });
     var q = $('[data-quiz]', v); if (q) q.onclick = function () { open('quiz'); };
     if (l.letters) $$('[data-k]', v).forEach(function (b) { b.onclick = function () { letterInfo($('.nld-linfo', v), LETTERS[+b.getAttribute('data-k')]); }; });
     if (l.ex) exampleWords($('.nld-ex', v), l.ex);
@@ -574,7 +748,7 @@
   function baseLetters(w) { return String(w).replace(/[ً-ٰٟۖ-ࣰۭ-ࣿـ]/g, '').replace(/[ٱأإآ]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و').replace(/ة/g, 'ه'); }
   function letterInfo(box, x) {
     box.innerHTML = '<div class="nld-lcard"><span class="nld-ar big">' + x[0] + '</span><div><b>' + x[1] + '</b> · ' + ZONES[x[2]] + (HEAVY.indexOf(x[0]) >= 0 ? ' · <i>মোটা হরফ</i>' : '') + (QALQALA.indexOf(x[0]) >= 0 ? ' · <i>ক্বলক্বলার হরফ</i>' : '') + '<p>' + x[3] + '</p><div class="nld-lex">কুরআনের শব্দ খোঁজা হচ্ছে…</div></div></div>';
-    speakBn(x[1], function () {});
+    var ki = LETTERS.indexOf(x); guide([{ ar: ARNAMES[ki], gap: 400 }, { ar: (x[0] === 'ء' ? 'أ' : x[0] === 'ا' ? 'أ' : x[0]) + 'َ ' + (x[0] === 'ا' || x[0] === 'ء' ? 'إ' : x[0]) + 'ِ ' + (x[0] === 'ا' || x[0] === 'ء' ? 'أ' : x[0]) + 'ُ', gap: 300 }, { bn: x[1] + '। ' + x[3] }]);
     var target = x[0] === 'ء' ? null : x[0];
     var tries = LETTER_SOURCES.slice();
     (function next() {
@@ -717,19 +891,23 @@
 
   /* ------------------------------------------------------------ Namaz: times, timetable, azan */
   var AZAN_URL = 'https://upload.wikimedia.org/wikipedia/commons/7/7d/The_Adhan_-_Muslim_Call_to_Prayer_-_Aaqib_Azeez.mp3';
+  // muezzin voices to choose from (one for all prayers, or a different one per prayer); 'ring' = phone alarm tone
+  var AZANS = [['aaqib', 'আকিব আজিজ', AZAN_URL], ['makkah', 'মক্কা শরীফ', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Makkah.mp3'], ['alafasy', 'মিশারি আলাফাসি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Mishary%20Alafasi.mp3'], ['menshawy', 'মুহাম্মদ আল-মিনশাভি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Mohammad%20Almenshawy.mp3'], ['refaat', 'মুহাম্মদ রিফআত', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Mohammad%20Ref3at.mp3'], ['zahrani', 'মানসুর আজ-জাহরানি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Mansoor%20Az-Zahrani.mp3'], ['qatami', 'নাসির আল-কাতামি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Nasser%20Alqatami.mp3'], ['arkani', 'ইব্রাহিম আল-আরকানি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Ibrahim%20Al-Arkani.mp3'], ['hamathani', 'মাজেদ আল-হামাদানি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Majed%20Al-hamathani.mp3'], ['malki', 'হামদান আল-মালিকি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Hamdan%20Almalki.mp3'], ['deghreri', 'হামাদ আদ-দাগরিরি', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Hamad%20Deghreri.mp3'], ['khatba', 'সুহাইব খাতবা', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Suhaib%20Khatba.mp3'], ['basit', 'আবদুল বাসিত', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Abed%20Albase6.mp3'], ['nuyne', 'আহমদ নুয়াইনা', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Ahmad%20Nuyne3.mp3'], ['fajr', 'ফজরের আযান (মালেক শাবায়ে)', 'https://raw.githubusercontent.com/abodehq/Athan-MP3/master/Sounds/Athan%20Al-fajer%20-%20Malek%20chebae.mp3'], ['ring', 'শুধু অ্যালার্মের শব্দ', 'ring']];
+  function azanFor(c, p) { return (c.sounds && c.sounds[p]) || c.sound || AZAN_URL; }
   var AZAN_CREDIT = 'আযানের অডিও: Aaqib Azeez, Wikimedia Commons (CC BY-SA 4.0)';
-  var CITIES = [['ঢাকা', 23.8103, 90.4125], ['চট্টগ্রাম', 22.3569, 91.7832], ['রাজশাহী', 24.3745, 88.6042], ['খুলনা', 22.8456, 89.5403], ['বরিশাল', 22.7010, 90.3535], ['সিলেট', 24.8949, 91.8687], ['রংপুর', 25.7439, 89.2752], ['ময়মনসিংহ', 24.7471, 90.4203]];
+  // all 64 districts of Bangladesh (district town), with division
+  var CITIES = 'ঢাকা,23.8103,90.4125,ঢাকা;গাজীপুর,24.0023,90.4264,ঢাকা;নারায়ণগঞ্জ,23.6238,90.5000,ঢাকা;নরসিংদী,23.9322,90.7151,ঢাকা;মানিকগঞ্জ,23.8617,90.0003,ঢাকা;মুন্সিগঞ্জ,23.5422,90.5305,ঢাকা;টাঙ্গাইল,24.2513,89.9167,ঢাকা;কিশোরগঞ্জ,24.4449,90.7766,ঢাকা;ফরিদপুর,23.6070,89.8429,ঢাকা;গোপালগঞ্জ,23.0050,89.8266,ঢাকা;মাদারীপুর,23.1641,90.1897,ঢাকা;শরীয়তপুর,23.2423,90.4348,ঢাকা;রাজবাড়ী,23.7574,89.6444,ঢাকা;চট্টগ্রাম,22.3569,91.7832,চট্টগ্রাম;কক্সবাজার,21.4272,92.0058,চট্টগ্রাম;কুমিল্লা,23.4607,91.1809,চট্টগ্রাম;ফেনী,23.0159,91.3976,চট্টগ্রাম;নোয়াখালী,22.8696,91.0995,চট্টগ্রাম;লক্ষ্মীপুর,22.9425,90.8412,চট্টগ্রাম;চাঁদপুর,23.2333,90.6713,চট্টগ্রাম;ব্রাহ্মণবাড়িয়া,23.9571,91.1115,চট্টগ্রাম;রাঙ্গামাটি,22.6533,92.1750,চট্টগ্রাম;খাগড়াছড়ি,23.1193,91.9847,চট্টগ্রাম;বান্দরবান,22.1953,92.2184,চট্টগ্রাম;রাজশাহী,24.3745,88.6042,রাজশাহী;নাটোর,24.4206,89.0003,রাজশাহী;নওগাঁ,24.7936,88.9318,রাজশাহী;চাঁপাইনবাবগঞ্জ,24.5965,88.2776,রাজশাহী;পাবনা,24.0064,89.2372,রাজশাহী;সিরাজগঞ্জ,24.4534,89.7007,রাজশাহী;বগুড়া,24.8465,89.3773,রাজশাহী;জয়পুরহাট,25.0968,89.0227,রাজশাহী;খুলনা,22.8456,89.5403,খুলনা;যশোর,23.1664,89.2081,খুলনা;সাতক্ষীরা,22.7185,89.0705,খুলনা;বাগেরহাট,22.6516,89.7859,খুলনা;কুষ্টিয়া,23.9013,89.1204,খুলনা;ঝিনাইদহ,23.5450,89.1726,খুলনা;মাগুরা,23.4855,89.4198,খুলনা;নড়াইল,23.1725,89.5127,খুলনা;চুয়াডাঙ্গা,23.6402,88.8418,খুলনা;মেহেরপুর,23.7622,88.6318,খুলনা;বরিশাল,22.7010,90.3535,বরিশাল;পটুয়াখালী,22.3596,90.3299,বরিশাল;ভোলা,22.6859,90.6482,বরিশাল;পিরোজপুর,22.5791,89.9759,বরিশাল;ঝালকাঠি,22.6406,90.1987,বরিশাল;বরগুনা,22.1591,90.1262,বরিশাল;সিলেট,24.8949,91.8687,সিলেট;মৌলভীবাজার,24.4829,91.7774,সিলেট;হবিগঞ্জ,24.3745,91.4155,সিলেট;সুনামগঞ্জ,25.0658,91.3950,সিলেট;রংপুর,25.7439,89.2752,রংপুর;দিনাজপুর,25.6217,88.6354,রংপুর;ঠাকুরগাঁও,26.0336,88.4616,রংপুর;পঞ্চগড়,26.3411,88.5542,রংপুর;নীলফামারী,25.9310,88.8560,রংপুর;লালমনিরহাট,25.9923,89.2847,রংপুর;কুড়িগ্রাম,25.8072,89.6295,রংপুর;গাইবান্ধা,25.3288,89.5286,রংপুর;ময়মনসিংহ,24.7471,90.4203,ময়মনসিংহ;জামালপুর,24.9375,89.9372,ময়মনসিংহ;শেরপুর,25.0205,90.0153,ময়মনসিংহ;নেত্রকোনা,24.8709,90.7279,ময়মনসিংহ'.split(';').map(function (r) { r = r.split(','); return [r[0], +r[1], +r[2], r[3]]; });
   var PNAMES = { fajr: 'ফজর', sunrise: 'সূর্যোদয়', dhuhr: 'যোহর', asr: 'আসর', maghrib: 'মাগরিব', isha: 'ইশা' };
   var FIVE = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
   function pcfg() {
-    var c = Object.assign({ city: 'ঢাকা', lat: 23.8103, lng: 90.4125, method: 'karachi', asr: 'hanafi', offsets: {}, on: {}, sound: AZAN_URL }, store('prayer') || {});
+    var c = Object.assign({ city: 'ঢাকা', lat: 23.8103, lng: 90.4125, method: 'karachi', asr: 'hanafi', offsets: {}, on: {}, sounds: {}, sound: AZAN_URL }, store('prayer') || {});
     c.sound = c.sound || AZAN_URL;
     return c;
   }
   function savePcfg(c) {
     store('prayer', c);
     var N = window.NexoraLifeNative;
-    try { if (N && N.azanConfig) N.azanConfig(JSON.stringify({ lat: c.lat, lng: c.lng, method: c.method, asr: c.asr, offsets: c.offsets, on: c.on, sound: c.sound, label: c.city })); } catch (e) {}
+    try { if (N && N.azanConfig) N.azanConfig(JSON.stringify({ lat: c.lat, lng: c.lng, method: c.method, asr: c.asr, offsets: c.offsets, on: c.on, sound: c.sound, sounds: c.sounds || {}, label: c.city })); } catch (e) {}
     webAzan();
   }
   function tzOf(d) { return -d.getTimezoneOffset() / 60; }
@@ -785,6 +963,80 @@
     var nx = nextPrayer(c);
     return { cur: cur, next: nx, now: now };
   }
+  /* ------------------------------------------------------------ Home dashboard */
+  var BMONTHS = ['বৈশাখ', 'জ্যৈষ্ঠ', 'আষাঢ়', 'শ্রাবণ', 'ভাদ্র', 'আশ্বিন', 'কার্তিক', 'অগ্রহায়ণ', 'পৌষ', 'মাঘ', 'ফাল্গুন', 'চৈত্র'];
+  var SEASONS = ['গ্রীষ্মকাল', 'বর্ষাকাল', 'শরৎকাল', 'হেমন্তকাল', 'শীতকাল', 'বসন্তকাল'];
+  /** Bangladesh's revised Bangla calendar (from 1426): 1 Boishakh = 14 April; Boishakh–Ashwin 31 days, Kartik–Magh 30, Falgun 29 (30 in a leap year), Chaitra 30. */
+  function bangla(d) {
+    var y = d.getFullYear(), start = new Date(y, 3, 14);
+    if (d < start) { y--; start = new Date(y, 3, 14); }
+    var leap = function (g) { return (g % 4 === 0 && g % 100 !== 0) || g % 400 === 0; };
+    var len = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, leap(y + 1) ? 30 : 29, 30];
+    var n = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - start) / 864e5), m = 0;
+    while (m < 11 && n >= len[m]) { n -= len[m]; m++; }
+    return { day: n + 1, month: m, year: y - 593, season: SEASONS[Math.floor(m / 2)] };
+  }
+  function nowH(d) { return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; }
+  function dur(h) { var m = Math.max(0, Math.round(h * 60)), hh = Math.floor(m / 60), mm = m % 60; return (hh ? bn(hh) + ' ঘণ্টা ' : '') + bn(mm) + ' মিনিট'; }
+  /** The prayer we are in now, its start/end (hours, may run past midnight) and the next one. */
+  function currentWaqt(t, h) {
+    var segs = [['fajr', t.fajr, t.sunrise], ['ishraq', t.sunrise, t.dhuhr], ['dhuhr', t.dhuhr, t.asr], ['asr', t.asr, t.maghrib], ['maghrib', t.maghrib, t.isha], ['isha', t.isha, t.fajr + 24]];
+    if (h < t.fajr) h += 24;
+    for (var i = 0; i < segs.length; i++) if (h >= segs[i][1] && h < segs[i][2]) return { p: segs[i][0], from: segs[i][1], to: segs[i][2], h: h, next: segs[(i + 1) % segs.length][0] === 'ishraq' ? 'dhuhr' : segs[(i + 1) % segs.length][0] };
+    return { p: 'isha', from: t.isha, to: t.fajr + 24, h: h, next: 'fajr' };
+  }
+  var homeTick = null;
+  function viewHome(v) {
+    if (!window.NexoraPrayer) { loading(v); setTimeout(function () { if (state.tab === 'home') viewHome(v); }, 600); return; }
+    var c = pcfg(), now = new Date(), t = dayTimes(now, c), h = nowH(now), w = currentWaqt(t, h), b = bangla(now);
+    var city = String(c.city || '').split(',')[0].replace(' (কাছাকাছি)', '');
+    var name = w.p === 'ishraq' ? 'ইশরাক / চাশত' : PNAMES[w.p];
+    var prog = Math.max(0, Math.min(1, (w.h - w.from) / (w.to - w.from)));
+    // sun (day) or moon (night) on an arc from sunrise to sunset
+    var day = h >= t.sunrise && h < t.maghrib;
+    var f = day ? (h - t.sunrise) / (t.maghrib - t.sunrise) : ((h < t.sunrise ? h + 24 : h) - t.maghrib) / (t.sunrise + 24 - t.maghrib);
+    f = Math.max(0, Math.min(1, f));
+    var ang = Math.PI * (1 - f), cx = 200 + 170 * Math.cos(ang), cy = 120 - 95 * Math.sin(ang);
+    var right = w.p === 'isha' ? ['তাহাজ্জুদ শেষ', t.fajr] : w.p === 'ishraq' ? ['যোহর শুরু', t.dhuhr] : ['পরের: ' + PNAMES[w.next], t[w.next]];
+    v.innerHTML =
+      '<div class="nlh-top"><div class="nlh-chip">📅 ' + now.toLocaleDateString('bn-BD', { month: 'long', day: 'numeric' }) + '</div><button class="nlh-chip nlh-loc">📍 ' + esc(city) + ' ▾</button></div>' +
+      '<div class="nlh-card nlh-cal"><b>' + (hijri(now) || '') + ' ' + (day ? '☀️' : '🌙') + '</b><span>' + now.toLocaleDateString('bn-BD', { weekday: 'long' }) + ', ' + bn(b.day) + ' ' + BMONTHS[b.month] + ' ' + bn(b.year) + ' বঙ্গাব্দ, ' + b.season + '</span></div>' +
+      '<div class="nlh-card nlh-sun"><svg viewBox="0 0 400 140" class="nlh-arc" aria-hidden="true">' +
+        '<defs><linearGradient id="nlhg" x1="0" x2="1"><stop offset="0" stop-color="#fdba74" stop-opacity=".55"/><stop offset="1" stop-color="#fde68a" stop-opacity=".15"/></linearGradient></defs>' +
+        '<path d="M30 120 Q30 120 30 120 A170 95 0 0 1 370 120" fill="none" stroke="#f59e0b" stroke-opacity=".45" stroke-width="2" stroke-dasharray="5 6"/>' +
+        '<path d="M30 120 A170 95 0 0 1 ' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' L' + cx.toFixed(1) + ' 120 Z" fill="url(#nlhg)"/>' +
+        '<g class="nlh-mosque" fill="#0f766e" fill-opacity=".07"><path d="M120 120v-30a80 80 0 0 1 160 0v30z"/><rect x="88" y="62" width="10" height="58"/><rect x="302" y="62" width="10" height="58"/><circle cx="93" cy="58" r="7"/><circle cx="307" cy="58" r="7"/></g>' +
+        '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="13" fill="' + (day ? '#facc15' : '#fde68a') + '" stroke="#fff" stroke-width="3"/>' + (day ? '' : '<circle cx="' + (cx + 5).toFixed(1) + '" cy="' + (cy - 4).toFixed(1) + '" r="10" fill="#fff"/>') +
+      '</svg>' +
+        '<div class="nlh-now"><div><small>এখন</small><b>' + name + ' ' + hm(w.from % 24) + '</b></div><div class="nlh-sep"></div><div><small>' + right[0] + '</small><b>' + hm(right[1]) + '</b></div></div>' +
+        '<div class="nlh-sunrow"><span>🌅 ' + hm(t.sunrise) + '</span><span class="nlh-clock">' + now.toLocaleTimeString('bn-BD', { hour: 'numeric', minute: '2-digit' }) + '</span><span>🌇 ' + hm(t.maghrib) + '</span></div>' +
+        '<div class="nlh-waqt"><div class="nlh-wrow"><b>' + name + '</b><span>' + hm(w.from % 24) + ' – ' + hm(w.to % 24) + '</span></div><div class="nlh-bar"><i style="width:' + Math.round(prog * 100) + '%"></i></div><div class="nlh-wrow"><span class="nlh-live">● চলমান</span><span>' + dur(w.to - w.h) + ' বাকি</span></div></div>' +
+      '</div>' +
+      '<div class="nlh-times">' + FIVE.map(function (p) { return '<div class="' + (p === w.p ? 'on' : p === w.next ? 'nx' : '') + '"><small>' + PNAMES[p] + '</small><b>' + hm(t[p]) + '</b></div>'; }).join('') + '</div>' +
+      '<div class="nlh-head"><span></span><b>ইলম ও আমল</b><button class="nlh-search" title="খুঁজুন">🔍</button></div>' +
+      '<div class="nlh-grid">' + [['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদীস'], ['namaz', '🕌', 'নামাযের সময়'], ['tilawat', '🎙️', 'তিলাওয়াত'], ['learn', '🎓', 'কুরআন শিক্ষা'], ['ampara', '📗', 'আমপারা'], ['azan', '📢', 'আযান'], ['quiz', '❓', 'কুইজ']].map(function (x) {
+        return '<button data-home="' + x[0] + '"><span>' + x[1] + '</span>' + x[2] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="nlh-head"><span class="o"></span><b>আজকের আয়াত</b></div><div class="nlh-card nlh-daily"></div>';
+    $('.nlh-loc', v).onclick = function () { open('namaz'); setTimeout(function () { var lb = $('.nld-locbox'); if (lb) lb.hidden = false; }, 50); };
+    $('.nlh-search', v).onclick = function () { var i = $('.nld-ask input', root); if (i) { i.focus(); i.scrollIntoView({ block: 'center', behavior: 'smooth' }); } };
+    $$('[data-home]', v).forEach(function (x) { x.onclick = function () {
+      var k = x.getAttribute('data-home');
+      if (k === 'tilawat') { open('quran'); return; }
+      if (k === 'ampara') { open('learn', { ampara: 1 }); return; }
+      if (k === 'azan') { open('namaz'); setTimeout(function () { var e = $('.nld-voices'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 80); return; }
+      open(k);
+    }; });
+    // a different ayah every day, with meaning and audio
+    var dn = Math.floor((now - new Date(2020, 0, 1)) / 864e5), pick = [[2, 255], [2, 286], [3, 8], [3, 139], [13, 28], [20, 114], [39, 53], [94, 5], [94, 6], [65, 3], [2, 152], [2, 186], [21, 87], [25, 74], [17, 24], [3, 173], [9, 51], [40, 60], [2, 201], [59, 22]][dn % 20];
+    surahText(pick[0]).then(function (all) { var j = all[pick[1] - 1];
+      var box = $('.nlh-daily', v); if (!box) return;
+      box.innerHTML = '<div class="nld-ar" dir="rtl">' + esc(j.ar) + '</div><p>' + esc(j.bn) + '</p><div class="nlh-drow"><small>সূরা ' + bn(pick[0]) + ', আয়াত ' + bn(pick[1]) + '</small><button>▶ শুনুন</button></div>';
+      $('button', box).onclick = function () { run({ kind: 'ayah', surah: pick[0], ayah: pick[1] }); };
+    }).catch(function () { var box = $('.nlh-daily', v); if (box) box.parentNode.removeChild(box); });
+    clearInterval(homeTick);
+    homeTick = setInterval(function () { if (state.tab !== 'home' || !document.body.contains(v)) { clearInterval(homeTick); return; } viewHome(v); }, 60000);
+  }
   function viewNamaz(v) {
     if (!window.NexoraPrayer) { v.innerHTML = '<div class="nld-load">লোড হচ্ছে…</div>'; setTimeout(function () { if (state.tab === 'namaz') viewNamaz(v); }, 600); return; }
     var c = pcfg(), now = new Date(), t = dayTimes(now, c);
@@ -796,12 +1048,15 @@
       '<div class="nld-hero"><div class="nld-hero-top"><button class="nld-loc">📍 ' + esc(c.city) + ' <span>▾ বদলান</span></button>' +
       '<div class="nld-date">' + now.toLocaleDateString('bn-BD', { weekday: 'long', day: 'numeric', month: 'long' }) + (hijri(now) ? '<br>' + hijri(now) : '') + '</div></div>' +
       '<div class="nld-hero-main"></div></div>' +
-      '<div class="nld-locbox" hidden><button class="nld-gps">📡 আমার বর্তমান লোকেশন ব্যবহার করুন</button><p>অথবা শহর বেছে নিন:</p><div class="nld-cities">' + CITIES.map(function (x, i) { return '<button data-ci="' + i + '">' + x[0] + '</button>'; }).join('') + '</div></div>' +
+      '<div class="nld-locbox" hidden><button class="nld-gps">📡 আমার বর্তমান লোকেশন ব্যবহার করুন</button><p class="nld-gpsmsg"></p><p>অথবা আপনার জেলা বেছে নিন:</p><input class="nld-csearch" placeholder="জেলার নাম লিখুন, যেমন রাজশাহী"><div class="nld-cities">' + CITIES.map(function (x, i) { return '<button data-ci="' + i + '" data-cn="' + x[0] + ' ' + x[3] + '">' + x[0] + '<small>' + x[3] + '</small></button>'; }).join('') + '</div></div>' +
       '<div class="nld-sec-title"><b>আজকের নামাজের সময়</b><button class="nld-alloff">' + (anyOn ? '🔕 সব আযান বন্ধ' : '🔔 সব ওয়াক্তে আযান') + '</button></div>' +
       '<div class="nld-ptimes">' + FIVE.map(function (p) {
         return '<div class="nld-pt" data-p="' + p + '"><span class="nld-pic">' + PICON[p] + '</span><div class="nld-pname"><b>' + PNAMES[p] + '</b><small>শেষ ' + hm(ends[p]) + '</small></div><span class="nld-ptime">' + hm(t[p]) + '</span>' +
           '<label class="nld-sw" title="আযান অ্যালার্ম"><input type="checkbox" data-bell="' + p + '"' + (c.on[p] ? ' checked' : '') + '><span></span><em>আযান</em></label></div>';
       }).join('') + '</div>' +
+      '<details class="nld-pset nld-voices" open><summary>🎵 আযানের কণ্ঠ বেছে নিন</summary><p class="nld-note">সব ওয়াক্তে একই কণ্ঠ, অথবা প্রতি ওয়াক্তে আলাদা — ▶ চেপে শুনে দেখুন।</p>' +
+      '<div class="nld-vrow"><b>সব ওয়াক্ত</b>' + azanSelect('all', c.sound) + '<button data-prev="all">▶</button></div>' +
+      FIVE.map(function (p) { return '<div class="nld-vrow"><span>' + PNAMES[p] + '</span>' + azanSelect(p, (c.sounds || {})[p] || '', true) + '<button data-prev="' + p + '">▶</button></div>'; }).join('') + '</details>' +
       '<button class="nld-test">▶ আযান শুনে দেখুন</button>' +
       '<p class="nld-note">' + (isApp ? '🔔 সুইচ চালু করলে সেই ওয়াক্তে ফোনে আযান বাজবে — অ্যাপ বন্ধ থাকলেও।' : '🔔 ওয়েবে আযান বাজে শুধু এই পেজ খোলা থাকলে; ফোনের অ্যাপে অ্যাপ বন্ধ থাকলেও বাজে।') + '</p>' +
       '<div class="nld-sec-title"><b>আজকের অন্যান্য সময়</b></div>' +
@@ -833,29 +1088,48 @@
     $('.nld-month', v).innerHTML = '<table><thead><tr><th>তারিখ</th><th>ফজর</th><th>সূর্যোদয়</th><th>যোহর</th><th>আসর</th><th>মাগরিব</th><th>ইশা</th></tr></thead><tbody>' + rows + '</tbody></table>';
 
     $('.nld-loc', v).onclick = function () { var b = $('.nld-locbox', v); b.hidden = !b.hidden; };
-    $$('[data-ci]', v).forEach(function (b) { b.onclick = function () { var x = CITIES[+b.getAttribute('data-ci')]; c.city = x[0]; c.lat = x[1]; c.lng = x[2]; savePcfg(c); viewNamaz(v); }; });
+    $('.nld-csearch', v).oninput = function () { var q = this.value.trim(); $$('[data-cn]', v).forEach(function (b) { b.hidden = q && b.getAttribute('data-cn').indexOf(q) < 0; }); };
+    $$('[data-ci]', v).forEach(function (b) { b.onclick = function () { var x = CITIES[+b.getAttribute('data-ci')]; c.city = x[0] + ', ' + x[3] + ' বিভাগ, বাংলাদেশ'; c.lat = x[1]; c.lng = x[2]; savePcfg(c); viewNamaz(v); }; });
     $('.nld-gps', v).onclick = function () {
       var b = this; b.textContent = '📡 লোকেশন নেওয়া হচ্ছে…';
-      locWaiter = function (lat, lng) {
-        if (lat == null) { b.textContent = '📡 লোকেশন পাওয়া যায়নি — নিচে শহর বেছে নিন'; return; }
-        c.city = 'আমার লোকেশন'; c.lat = lat; c.lng = lng; savePcfg(c); viewNamaz(v);
-        placeName(lat, lng).then(function (name) { c.city = name; savePcfg(c); if (state.tab === 'namaz') viewNamaz(v); });
+      locWaiter = function (lat, lng, acc) {
+        if (lat == null) { b.textContent = '📡 লোকেশন পাওয়া যায়নি — নিচে জেলা বেছে নিন'; return; }
+        // a computer without GPS guesses from the internet line, often the provider's city (Dhaka): say so and keep the district list open
+        var rough = acc && acc > 15000;
+        c.city = 'আমার লোকেশন'; c.lat = lat; c.lng = lng; savePcfg(c);
+        placeName(lat, lng).then(function (name) {
+          c.city = name; savePcfg(c);
+          if (state.tab !== 'namaz') return;
+          viewNamaz(v);
+          if (rough) { var lb = $('.nld-locbox', v); lb.hidden = false; $('.nld-gpsmsg', v).innerHTML = '⚠️ এই ডিভাইস সঠিক লোকেশন দেয়নি (আনুমানিক ' + bn(Math.round(acc / 1000)) + ' কিমি ভুল হতে পারে, ইন্টারনেট সংযোগ থেকে ধরা)। আপনি অন্য জেলায় থাকলে নিচ থেকে জেলা বেছে নিন, অথবা ফোনের অ্যাপে GPS চালু করে নিন।'; }
+        });
       };
       var N = window.NexoraLifeNative;
       if (N && N.askLocation) N.askLocation();
-      else if (navigator.geolocation) navigator.geolocation.getCurrentPosition(function (p) { locWaiter(p.coords.latitude, p.coords.longitude); }, function () { locWaiter(null); }, { timeout: 15000, maximumAge: 3600000 });
+      else if (navigator.geolocation) navigator.geolocation.getCurrentPosition(function (p) { locWaiter(p.coords.latitude, p.coords.longitude, p.coords.accuracy); }, function () { locWaiter(null); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
       else locWaiter(null);
     };
     $$('[data-bell]', v).forEach(function (b) { b.onchange = function () { c.on[b.getAttribute('data-bell')] = b.checked; savePcfg(c); $('.nld-alloff', v).textContent = FIVE.some(function (p) { return c.on[p]; }) ? '🔕 সব আযান বন্ধ' : '🔔 সব ওয়াক্তে আযান'; }; });
     $('.nld-alloff', v).onclick = function () { var any = FIVE.some(function (p) { return c.on[p]; }); FIVE.forEach(function (p) { c.on[p] = !any; }); savePcfg(c); viewNamaz(v); };
+    $$('[data-voice]', v).forEach(function (sel) { sel.onchange = function () { var p = sel.getAttribute('data-voice'); if (p === 'all') c.sound = sel.value; else { c.sounds = c.sounds || {}; if (sel.value) c.sounds[p] = sel.value; else delete c.sounds[p]; } savePcfg(c); }; });
+    $$('[data-prev]', v).forEach(function (b) { b.onclick = function () {
+      var p = b.getAttribute('data-prev'), u = p === 'all' ? c.sound : azanFor(c, p), N = window.NexoraLifeNative;
+      if (N && N.azanPreview) { N.azanPreview(p === 'all' ? 'dhuhr' : p, u); return; }
+      if (u === 'ring') u = AZAN_URL;
+      if (!player.paused && player.src === u) { stopAll(); return; }
+      stopAll(); playUrl(u); player.playbackRate = 1;
+    }; });
     $('.nld-test', v).onclick = function () {
       var N = window.NexoraLifeNative;
       if (N && N.azanTest) { N.azanTest('dhuhr'); return; }
-      stopAll(); playUrl(c.sound); player.playbackRate = 1;
+      stopAll(); playUrl(azanFor(c, 'dhuhr') === 'ring' ? AZAN_URL : azanFor(c, 'dhuhr')); player.playbackRate = 1;
     };
     $('.nld-meth', v).onchange = function () { c.method = this.value; savePcfg(c); viewNamaz(v); };
     $('.nld-asr', v).onchange = function () { c.asr = this.value; savePcfg(c); viewNamaz(v); };
     $$('[data-off]', v).forEach(function (i) { i.onchange = function () { c.offsets[i.getAttribute('data-off')] = +en(i.value) || 0; savePcfg(c); viewNamaz(v); var ps = $$('.nld-pset', v); ps[ps.length - 1].open = true; }; });
+  }
+  function azanSelect(p, cur, inherit) {
+    return '<select data-voice="' + p + '">' + (inherit ? '<option value="">— উপরের মতো —</option>' : '') + AZANS.map(function (a) { return '<option value="' + esc(a[2]) + '"' + (a[2] === cur ? ' selected' : '') + '>' + a[1] + '</option>'; }).join('') + '</select>';
   }
   var locWaiter = function () {};
 
@@ -873,7 +1147,7 @@
       FIVE.forEach(function (p) { var at = NexoraPrayer.toDate(d, t[p]); if (c.on[p] && at > now && (!best || at < best.at)) best = { p: p, at: at }; });
     }
     if (!best) return;
-    webTimer = setTimeout(function () { stopAll(); playUrl(c.sound); player.playbackRate = 1; if (bar) $('.nld-bar-t', bar).textContent = '🕌 ' + PNAMES[best.p] + '-এর আযান'; setTimeout(webAzan, 60000); }, Math.min(best.at - now, 2147000000));
+    webTimer = setTimeout(function () { stopAll(); var u = azanFor(c, best.p); if (u === 'ring') u = AZAN_URL; playUrl(u); player.playbackRate = 1; if (bar) $('.nld-bar-t', bar).textContent = '🕌 ' + PNAMES[best.p] + '-এর আযান'; setTimeout(webAzan, 60000); }, Math.min(best.at - now, 2147000000));
   }
 
   /* ------------------------------------------------------------ Settings */
@@ -977,5 +1251,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
-  window.NexoraDeen = { _setSurahs: function (j) { SURAHS = j; LATIN = null; }, parse: parseCommand, run: run, show: show, open: function (t, a) { show(); open(t, a); }, stop: stopAll, setSpeed: setSpeed, onLocation: function (lat, lng) { locWaiter(lat, lng); } };
+  window.NexoraDeen = { _setSurahs: function (j) { SURAHS = j; LATIN = null; }, parse: parseCommand, run: run, show: show, open: function (t, a) { show(); open(t, a); }, stop: stopAll, setSpeed: setSpeed, onLocation: function (lat, lng, acc) { locWaiter(lat, lng, acc); } };
 })();

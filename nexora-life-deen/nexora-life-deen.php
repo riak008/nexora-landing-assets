@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.3.0';
+	const VERSION = '1.4.0';
 
 	public static function init() {
 		add_action( 'admin_footer-toplevel_page_nexora-life', array( __CLASS__, 'print_ui' ) );
@@ -105,8 +105,12 @@ final class NLO_Deen {
 		$t = strtr( $t, array( '০' => '0', '১' => '1', '২' => '2', '৩' => '3', '৪' => '4', '৫' => '5', '৬' => '6', '৭' => '7', '৮' => '8', '৯' => '9' ) );
 		$t = str_replace( array( 'সুরা', 'ছুরা', 'ছূরা' ), 'সূরা', $t );
 		$t = str_replace( array( 'আইয়াত', 'আয়াতের' ), 'আয়াত', $t );
-		$t = preg_replace( '/\b(surah|surat|sura|shura)\b/u', 'সূরা', $t );
-		$t = preg_replace( '/\b(ayat|ayah|aayat|ayaat|ayath|verse)\b/u', 'আয়াত', $t );
+		$t = preg_replace( '/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayat?u?l\s*kursi|\bkursi\b|কুরসি/u', ' kursi255 ', $t );
+		if ( false !== strpos( $t, 'kursi255' ) ) {
+			return array( 'kind' => 'ayah', 'surah' => 2, 'ayah' => 255 );
+		}
+		$t = preg_replace( '/\b(su+r+a+h?|surat|surar|surahr|surah?er|shu+r+a+h?|sora+h?|sure|surae)\b/u', 'সূরা', $t );
+		$t = preg_replace( '/\b(a+y+a+t+h?|ayah|aiat|ayet|ayot|ayater|ayate|ayatta|ayat?ta|aayat|ayaat|ayath|verse)\b/u', 'আয়াত', $t );
 
 		if ( preg_match( '/হাদিস|হাদীস|hadith|hadis/u', $t ) || preg_match( '/(বুখারী|বুখারি|তিরমিযী|তিরমিজি|bukhari|tirmidhi|tirmizi)/u', $t ) ) {
 			$books = array(
@@ -125,13 +129,16 @@ final class NLO_Deen {
 			return array( 'kind' => 'prayer' );
 		}
 		$is_quran = preg_match( '/সূরা|আয়াত|কুরআন|কোরআন|quran|koran|তিলাওয়াত|তেলাওয়াত|tilawat|telawat/u', $t ) || preg_match( '/^\s*\d{1,3}\s*[:।]\s*\d{1,3}\s*$/u', $t );
+		if ( ! $is_quran && ( preg_match( '/পড|শোনা|শুনা|শুনাও|তিলাওয়াত|তেলাওয়াত|\b(poro|poren|porun|portesi|shunao|sunao|sonao|shonao|shunau|sunau|tilawat|telawat|telwat|tilwat|recite|play|chalao|calao)\b/u', $t ) || preg_match( '/\d/', $t ) ) && self::surah_by_name( $t, true ) ) {
+			$is_quran = true;
+		}
 		if ( ! $is_quran ) {
 			return null;
 		}
 		if ( preg_match( '/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayatul\s*kursi|আয়াতul\s*kursi/u', $t ) ) {
 			return array( 'kind' => 'ayah', 'surah' => 2, 'ayah' => 255 );
 		}
-		$num = '(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|তম|number|num|no\.?|nong|nombor|th)?';
+		$num = '(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|তম|number|num|no\.?|nong|nombor|nambar|nmbr|nom|th)?';
 		$s   = 0;
 		$a   = 0;
 		if ( preg_match( '/(\d{1,3})\s*[:।]\s*(\d{1,3})/u', $t, $m ) ) {
@@ -154,8 +161,13 @@ final class NLO_Deen {
 			if ( ! $a && preg_match( '/আয়াত\s*' . $num . '\s*(\d{1,3})/u', $t, $m, PREG_OFFSET_CAPTURE ) && $m[1][1] !== $s_at ) {
 				$a = (int) $m[1][0];
 			}
+			$by_name = false;
 			if ( ! $s ) {
-				$s = self::surah_by_name( $t );
+				$s       = self::surah_by_name( $t );
+				$by_name = (bool) $s;
+			}
+			if ( $by_name && ! $a && preg_match_all( '/\d{1,3}/', $t, $ns ) && 1 === count( $ns[0] ) ) {
+				$a = (int) $ns[0][0];
 			}
 			if ( ! $s && $a && preg_match_all( '/\d{1,3}/', $t, $nums ) ) {
 				$rest = array_values( array_filter( array_map( 'intval', $nums[0] ), static function ( $x ) use ( $a ) { return $x !== $a; } ) );
@@ -185,7 +197,7 @@ final class NLO_Deen {
 	}
 
 	/** Longest Bangla or English name found wins ("আলাক" is not "আলা", "an-nasr" is not "an-nas"). */
-	private static function surah_by_name( $t ) {
+	private static function surah_by_name( $t, $strict = false ) {
 		$said = (bool) preg_match( '/সূরা|surah|sura/u', $t );
 		$norm = static function ( $x ) {
 			return str_replace( "\u{09DF}", "\u{09AF}\u{09BC}", preg_replace( '/[\s\-\'’ʼ.]+/u', '', $x ) );
@@ -214,10 +226,21 @@ final class NLO_Deen {
 				}
 			}
 		}
+		// strict (no "সূরা" keyword said): an English name must be a whole word, "alarm" is not "al-a'la"
+		$words = array();
+		if ( $strict ) {
+			$ws = preg_split( '/[^a-z\'’-]+/', strtolower( $t ), -1, PREG_SPLIT_NO_EMPTY );
+			foreach ( $ws as $i => $w ) {
+				$words[] = self::latin( $w );
+				if ( isset( $ws[ $i + 1 ] ) ) {
+					$words[] = self::latin( $w . '-' . $ws[ $i + 1 ] );
+				}
+			}
+		}
 		foreach ( $latin_names as $n => $aliases ) {
 			foreach ( $aliases as $al ) {
 				$l = strlen( $al );
-				if ( $l > $len && ( $said || $l >= 3 ) && false !== strpos( $la_t, $al ) ) {
+				if ( $l > $len && ( $said || $l >= 3 ) && ( $strict ? in_array( $al, $words, true ) : false !== strpos( $la_t, $al ) ) ) {
 					$best = $n;
 					$len  = $l;
 				}
