@@ -28,8 +28,21 @@
   ];
   var TRANSLATIONS = [
     { id: 'ben-muhiuddinkhan', name: 'মাওলানা মুহিউদ্দীন খান' },
-    { id: 'ben-abubakrzakaria', name: 'ড. আবু বকর মুহাম্মাদ যাকারিয়া (বাদশাহ ফাহদ কুরআন কমপ্লেক্স)' }
+    { id: 'ben-abubakrzakaria', name: 'ড. আবু বকর মুহাম্মাদ যাকারিয়া (বাদশাহ ফাহদ কুরআন কমপ্লেক্স)' },
+    { id: 'eng-ummmuhammad', name: 'English — Saheeh International' },
+    { id: 'eng-muhammadtaqiudd', name: 'English — Hilali & Muhsin Khan' }
   ];
+  /** The hub's interface language: Bangla unless the hub shows its menu in another language (then meanings come in English). */
+  function uiLang() {
+    try {
+      var n = document.querySelector('.nlo-nav'); if (!n) return 'bn';
+      var t = (n.innerText || '').replace(/কুরআন ও হাদিস/g, '');
+      var bnC = (t.match(/[\u0980-\u09FF]/g) || []).length, laC = (t.match(/[A-Za-z]/g) || []).length;
+      return laC > bnC * 2 ? 'en' : 'bn';
+    } catch (e) { return 'bn'; }
+  }
+  function trEdition() { var en = uiLang() === 'en'; if (en && /^ben-/.test(settings.tr) && !settings.trPicked) return 'eng-ummmuhammad'; return settings.tr; }
+  function hLang() { return uiLang() === 'en' ? 'eng-' : 'ben-'; }
   var SPEEDS = [[0.5, 'খুব ধীর'], [0.75, 'ধীর'], [1, 'স্বাভাবিক'], [1.25, 'দ্রুত'], [1.5, 'খুব দ্রুত']];
   var BOOKS = { bukhari: 'সহীহ বুখারী', muslim: 'সহীহ মুসলিম', tirmidhi: 'জামে তিরমিযী' };
 
@@ -80,14 +93,14 @@
   function surahText(n) {
     return Promise.all([
       getJSON(QAPI + 'ara-quranuthmanihaf/' + n + '.json', true),
-      getJSON(QAPI + settings.tr + '/' + n + '.json', true)
+      getJSON(QAPI + trEdition() + '/' + n + '.json', true)
     ]).then(function (r) {
       var ar = r[0].chapter, tr = r[1].chapter;
       return ar.map(function (v, i) { return { s: n, a: v.verse, ar: v.text, bn: cleanBn(tr[i] && tr[i].text) }; });
     });
   }
   function verseWords(s, a) {
-    return getJSON(QCOM + 'verses/by_key/' + s + ':' + a + '?language=bn&words=true&word_fields=text_uthmani&word_translation_language=bn', true).then(function (j) {
+    return getJSON(QCOM + 'verses/by_key/' + s + ':' + a + '?language=' + (uiLang() === 'en' ? 'en' : 'bn') + '&words=true&word_fields=text_uthmani&word_translation_language=' + (uiLang() === 'en' ? 'en' : 'bn'), true).then(function (j) {
       return ((j.verse && j.verse.words) || []).filter(function (w) { return w.char_type_name === 'word'; }).map(function (w) {
         return { pos: w.position, ar: w.text_uthmani || w.text, bn: w.translation && w.translation.text, tl: w.transliteration && w.transliteration.text, audio: w.audio_url ? WBW + w.audio_url : null };
       });
@@ -97,7 +110,7 @@
   function hadithBooks() { return HBOOKS ? Promise.resolve(HBOOKS) : getJSON(BASE + 'hadith-books.json', false).then(function (j) { HBOOKS = j; return j; }); }
   function hadith(book, num) {
     return Promise.all([
-      getJSON(HAPI + 'ben-' + book + '/' + num + '.json', true).catch(function () { return null; }),
+      getJSON(HAPI + hLang() + book + '/' + num + '.json', true).catch(function () { return null; }),
       getJSON(HAPI + 'ara-' + book + '/' + num + '.json', true).catch(function () { return null; })
     ]).then(function (r) {
       var b = r[0] && r[0].hadiths && r[0].hadiths[0], a = r[1] && r[1].hadiths && r[1].hadiths[0];
@@ -110,7 +123,7 @@
   }
   function hadithSection(book, sec) {
     return Promise.all([
-      getJSON(HAPI + 'ben-' + book + '/sections/' + sec + '.json', true).catch(function () { return { hadiths: [] }; }),
+      getJSON(HAPI + hLang() + book + '/sections/' + sec + '.json', true).catch(function () { return { hadiths: [] }; }),
       getJSON(HAPI + 'ara-' + book + '/sections/' + sec + '.json', true).catch(function () { return { hadiths: [] }; })
     ]).then(function (r) {
       var ar = {}; (r[1].hadiths || []).forEach(function (h) { ar[h.hadithnumber] = h.text; });
@@ -308,7 +321,7 @@
 
   function panel() {
     // data-nt: the hub machine-translates Bangla text when its language is not Bangla; Quran, hadith and lessons stay as written
-    root = el('<div class="nld" data-nt="1"><div class="nld-tabs">' +
+    root = el('<div class="nld"><div class="nld-tabs">' +
       [['home', '🏠', 'হোম'], ['namaz', '🕌', 'নামাজ'], ['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদিস'], ['learn', '🎓', 'শিখুন'], ['quiz', '❓', 'কুইজ'], ['settings', '⚙️', 'সেটিংস']].map(function (t) {
         return '<button data-dt="' + t[0] + '"><span>' + t[1] + '</span>' + t[2] + '</button>';
       }).join('') + '</div><form class="nld-ask"><input placeholder="যেমন: ২ নম্বর সূরার ২৫৫ নম্বর আয়াত, সূরা ইয়াসিন, বুখারী ১" aria-label="কী শুনতে চান"><button>খুঁজুন</button></form><div class="nld-view"></div></div>');
@@ -1041,8 +1054,9 @@
     var right = w.p === 'isha' ? ['তাহাজ্জুদ শেষ', t.fajr] : w.p === 'ishraq' ? ['যোহর শুরু', t.dhuhr] : ['পরের: ' + PNAMES[w.next], t[w.next]];
     v.innerHTML =
       '<div class="nlh-top"><div class="nlh-chip">📅 ' + now.toLocaleDateString('bn-BD', { month: 'long', day: 'numeric' }) + '</div><button class="nlh-chip nlh-loc">📍 ' + esc(city) + ' ▾</button></div>' +
+      '<div class="nlh-hello"><small>আসসালামু আলাইকুম</small><b>' + (h < 12 ? 'শুভ সকাল' : h < 17 ? 'শুভ দুপুর' : h < 19 ? 'শুভ সন্ধ্যা' : 'শুভ রাত্রি') + '</b></div>' +
       '<div class="nlh-card nlh-cal"><b>' + (hijri(now) || '') + ' ' + (day ? '☀️' : '🌙') + '</b><span>' + now.toLocaleDateString('bn-BD', { weekday: 'long' }) + ', ' + bn(b.day) + ' ' + BMONTHS[b.month] + ' ' + bn(b.year) + ' বঙ্গাব্দ, ' + b.season + '</span></div>' +
-      '<div class="nlh-card nlh-sun"><svg viewBox="0 0 400 140" class="nlh-arc" aria-hidden="true">' +
+      '<div class="nlh-card nlh-sun ' + (day ? 'is-day' : 'is-night') + '"><svg viewBox="0 0 400 140" class="nlh-arc" aria-hidden="true">' +
         '<defs><linearGradient id="nlhg" x1="0" x2="1"><stop offset="0" stop-color="#fdba74" stop-opacity=".55"/><stop offset="1" stop-color="#fde68a" stop-opacity=".15"/></linearGradient></defs>' +
         '<path d="M30 120 Q30 120 30 120 A170 95 0 0 1 370 120" fill="none" stroke="#f59e0b" stroke-opacity=".45" stroke-width="2" stroke-dasharray="5 6"/>' +
         '<path d="M30 120 A170 95 0 0 1 ' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' L' + cx.toFixed(1) + ' 120 Z" fill="url(#nlhg)"/>' +
@@ -1153,12 +1167,16 @@
     $$('[data-bell]', v).forEach(function (b) { b.onchange = function () { c.on[b.getAttribute('data-bell')] = b.checked; savePcfg(c); $('.nld-alloff', v).textContent = FIVE.some(function (p) { return c.on[p]; }) ? '🔕 সব আযান বন্ধ' : '🔔 সব ওয়াক্তে আযান'; }; });
     $('.nld-alloff', v).onclick = function () { var any = FIVE.some(function (p) { return c.on[p]; }); FIVE.forEach(function (p) { c.on[p] = !any; }); savePcfg(c); viewNamaz(v); };
     $$('[data-voice]', v).forEach(function (sel) { sel.onchange = function () { var p = sel.getAttribute('data-voice'); if (p === 'all') c.sound = sel.value; else { c.sounds = c.sounds || {}; if (sel.value) c.sounds[p] = sel.value; else delete c.sounds[p]; } savePcfg(c); }; });
+    var prevBtn = null;
+    var resetPrev = function () { $$('[data-prev]', v).forEach(function (x) { x.textContent = '▶'; x.classList.remove('on'); }); };
+    player.addEventListener('pause', function () { if (prevBtn) { resetPrev(); } });
+    player.addEventListener('ended', function () { prevBtn = null; resetPrev(); });
     $$('[data-prev]', v).forEach(function (b) { b.onclick = function () {
-      var p = b.getAttribute('data-prev'), u = p === 'all' ? c.sound : azanFor(c, p), N = window.NexoraLifeNative;
-      if (N && N.azanPreview) { N.azanPreview(p === 'all' ? 'dhuhr' : p, u); return; }
-      if (u === 'ring') u = AZAN_URL;
-      if (!player.paused && player.src === u) { stopAll(); return; }
-      stopAll(); playUrl(u); player.playbackRate = 1;
+      var p = b.getAttribute('data-prev'), u = p === 'all' ? c.sound : azanFor(c, p);
+      if (u === 'ring') { var N = window.NexoraLifeNative; if (N && N.azanPreview) N.azanPreview('dhuhr', 'ring'); else toastOnce('এটা ফোনের অ্যালার্মের শব্দ — অ্যাপে বাজবে।'); return; }
+      if (prevBtn === b && !player.paused) { player.pause(); return; }                 // ⏸ pause
+      if (prevBtn === b && player.paused && player.src === u) { player.play(); b.textContent = '⏸'; b.classList.add('on'); return; } // ▶ resume
+      stopAll(); prevBtn = b; playUrl(u); player.playbackRate = 1; resetPrev(); b.textContent = '⏸'; b.classList.add('on');
     }; });
     $('.nld-test', v).onclick = function () {
       var N = window.NexoraLifeNative;
@@ -1198,7 +1216,7 @@
       '<label class="nld-chk"><input type="checkbox" class="nld-st"' + (settings.showTr ? ' checked' : '') + '> আয়াতের নিচে বাংলা অর্থ দেখাও</label></div>' + controls() +
       '<p class="nld-src">কুরআনের লেখা ও অনুবাদ সরাসরি নির্ভরযোগ্য উৎস থেকে আসে (Tanzil উসমানি হাফস, বাদশাহ ফাহদ কুরআন কমপ্লেক্সের বাংলা অনুবাদ, মুহিউদ্দীন খানের অনুবাদ)। এখানে কিছু হাতে টাইপ করা হয়নি। একবার খোলা সূরা ফোনে জমা থাকে, পরের বার দ্রুত খোলে।</p><button class="nld-clear">জমা রাখা সূরা মুছে নতুন করে আনো</button>';
     bindControls(v);
-    $('.nld-tr', v).onchange = function () { settings.tr = this.value; saveSettings(); };
+    $('.nld-tr', v).onchange = function () { settings.tr = this.value; settings.trPicked = true; saveSettings(); };
     $('.nld-font', v).oninput = function () { settings.font = +this.value; saveSettings(); $('.nld-fprev', v).style.fontSize = this.value + 'px'; };
     $('.nld-st', v).onchange = function () { settings.showTr = this.checked; saveSettings(); };
     $('.nld-clear', v).onclick = function () { try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('nld_c_') === 0) localStorage.removeItem(k); }); } catch (e) {} for (var k in MEM) delete MEM[k]; this.textContent = '✓ মুছে ফেলা হয়েছে'; };
@@ -1239,7 +1257,7 @@
   function addNav() {
     $$('.nlo-nav').forEach(function (nav) {
       if ($('[data-deen]', nav)) return;
-      var b = el('<button data-deen="1" data-nt="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
+      var b = el('<button data-deen="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
       var after = $('[data-tab="health"]', nav) || $('[data-tab="jobs"]', nav);
       if (after && after.nextSibling) nav.insertBefore(b, after.nextSibling); else nav.appendChild(b);
       b.onclick = function (e) { e.preventDefault(); show(); window.scrollTo(0, 0); };
@@ -1247,7 +1265,7 @@
     // phone app: the "আরো" sheet (grid of tiles)
     $$('.sh-grid').forEach(function (grid) {
       if ($('[data-deen]', grid)) return;
-      var t = el('<button data-deen="1" data-nt="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
+      var t = el('<button data-deen="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
       var after = $('[data-tab="health"]', grid) || $('[data-tab="jobs"]', grid);
       if (after && after.nextSibling) grid.insertBefore(t, after.nextSibling); else grid.insertBefore(t, grid.firstChild);
       t.onclick = function (e) {
@@ -1261,7 +1279,7 @@
     $$('[data-tab]').forEach(function (b) { if (!b._nld) { b._nld = 1; b.addEventListener('click', function () { $$('[data-deen]').forEach(function (x) { x.classList.remove('on'); }); stopAll(); }); } });
   }
   function playerBar() {
-    bar = el('<div class="nld-bar" data-nt="1"><span class="nld-bar-t">তিলাওয়াত</span><button data-bar="play">▶</button><select class="nld-speed" title="গতি">' + SPEEDS.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === settings.speed ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select><button data-bar="stop">⏹</button></div>');
+    bar = el('<div class="nld-bar"><span class="nld-bar-t">তিলাওয়াত</span><button data-bar="play">▶</button><select class="nld-speed" title="গতি">' + SPEEDS.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === settings.speed ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select><button data-bar="stop">⏹</button></div>');
     document.body.appendChild(bar);
     $('[data-bar=play]', bar).onclick = function () { if (player.paused) { if (player.src) player.play(); } else player.pause(); };
     $('[data-bar=stop]', bar).onclick = stopAll;

@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.4.1';
+	const VERSION = '1.4.2';
 
 	public static function init() {
 		add_action( 'admin_footer-toplevel_page_nexora-life', array( __CLASS__, 'print_ui' ) );
