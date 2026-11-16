@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Nexora Life Deen (Quran & Hadith)
  * Description: 📖 কুরআন শরীফ (১১৪ সূরা, আরবি + বাংলা অর্থ, আয়াত ধরে তিলাওয়াত, গতি কম-বেশি), সহীহ বুখারী, সহীহ মুসলিম, জামে তিরমিযী, আর একদম শুরু থেকে কুরআন শেখা (হরফ, মাখরাজ, হরকত, তাজবীদ, প্র্যাকটিস, কুইজ)। Nexora Life OS-এর ভেতরে (ওয়েব + অ্যাপ) "কুরআন ও হাদিস" ট্যাব হিসেবে আসে, আর Riak agent-কে "২ নম্বর সূরার ২৫৫ নম্বর আয়াত শোনাও" বললে সেটা খুলে তিলাওয়াত করে।
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Nexora Forward
  * Requires PHP: 7.4
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.1.0';
+	const VERSION = '1.2.0';
 
 	public static function init() {
 		add_action( 'admin_footer-toplevel_page_nexora-life', array( __CLASS__, 'print_ui' ) );
