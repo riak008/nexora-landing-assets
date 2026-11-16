@@ -747,7 +747,8 @@
       $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var c = rows[+b.getAttribute('data-r')][+b.getAttribute('data-c')]; guide([{ cell: b, ar: c[0], gap: 0 }]); }; });
       $('.nld-gstop', box).onclick = function () { guideToken = null; stopAll(); };
       $('.nld-gplay', box).onclick = function () {
-        var steps = [{ bn: l.say, gap: 700 }];
+        var body = ($('.nld-lbody', v) || {}).innerText || ''; body = body.replace(/[؀-ۿࢠ-ࣿ]+/g, ' ');
+        var steps = [{ bn: body, gap: 500 }, { bn: l.say, gap: 700 }];
         rows.forEach(function (r, ri) { r.forEach(function (c, ci) { steps.push({ cell: cellOf(ri, ci), ar: c[0], gap: 900 }); }); });
         guide(steps);
       };
