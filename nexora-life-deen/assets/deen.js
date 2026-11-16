@@ -753,12 +753,16 @@
       return best;
     });
   }
+  // nothing for "أَبَّ"/"أُبْ" as a whole? then the letter with its mark alone ("بَّ", "بْ")
+  function qariWordLoose(target) {
+    return qariWord(target).then(function (w) { if (w) return w; var cl = clusters(target); return cl.length > 1 ? qariWord(cl.slice(1).join('')) : null; });
+  }
   // the qari reading letter names: only these three stand alone in the Quran (Sad 38:1, Qaf 50:1, Nun 68:1)
   var NAME_AUDIO = { 'ص': [38, 1, 1], 'ق': [50, 1, 1], 'ن': [68, 1, 1] };
   function p3(x) { return ('00' + x).slice(-3); }
   function qariStep(cell, target, gap, done) {
     var note = function (w) { var nb = cell && cell.closest('.nld-qaida, .nld-linfo, .nld-spell'); var el2 = nb && nb.querySelector('.nld-qnote'); if (!el2 && nb) { el2 = document.createElement('div'); el2.className = 'nld-qnote'; nb.insertBefore(el2, nb.firstChild); } if (el2) el2.innerHTML = w ? '🎙️ ক্বারীর কণ্ঠে আসল শব্দ: <span class="nld-ar" data-nt="1">' + esc(w.ar) + '</span> <small>(' + bn(w.key) + ') — শব্দের যে অংশে <b class="nld-ar" data-nt="1">' + esc(target) + '</b> আছে সেটা খেয়াল করুন</small>' : '⚠️ এই উচ্চারণের জন্য ক্বারীর রেকর্ডিং পাওয়া যায়নি'; };
-    qariWord(target).then(function (w) {
+    qariWordLoose(target).then(function (w) {
       note(w);
       if (!w) return done();
       playUrl(w.audio); player.playbackRate = Math.min(1, settings.speed);

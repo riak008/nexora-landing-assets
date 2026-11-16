@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.4.7';
+	const VERSION = '1.4.8';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
@@ -73,12 +73,29 @@ final class NLO_Deen {
 	/* ------------------------------------------------------------ UI */
 
 	public static function app_buffer() {
+		if ( ! empty( $_GET['eso_quran'] ) ) { // phpcs:ignore
+			self::standalone();
+		}
 		if ( empty( $_GET['nexora_life_app'] ) ) { // phpcs:ignore
 			return;
 		}
 		ob_start( static function ( $html ) {
 			return false !== stripos( $html, '</body>' ) ? str_ireplace( '</body>', self::ui() . '</body>', $html ) : $html;
 		} );
+	}
+
+	/** "এসো কুরআন শিখি": the Quran, hadith, prayer and learning part on its own page (no login), for its own app. */
+	private static function standalone() {
+		header( 'Content-Type: text/html; charset=utf-8' );
+		header( 'Cache-Control: public, max-age=300' );
+		echo '<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+			. '<meta name="theme-color" content="#0f766e"><title>এসো কুরআন শিখি</title>'
+			. '<style>html,body{margin:0;background:#f6faf9}#nlo-view{max-width:980px;margin:0 auto;min-height:100vh}.nld{border-radius:0!important;padding-top:max(10px,env(safe-area-inset-top))!important}.nld-sticky{border-radius:0!important}.eso-load{font:16px system-ui;color:#0f766e;text-align:center;padding:40vh 0}</style>'
+			. '</head><body class="eso-quran"><div id="nlo-view"><div class="eso-load">এসো কুরআন শিখি…</div></div>'
+			. self::ui()
+			. '<script>location.hash="#deen";(function w(){if(window.NexoraDeen){NexoraDeen.show();}else setTimeout(w,120);})();</script>'
+			. '</body></html>';
+		exit;
 	}
 
 	public static function print_ui() {
