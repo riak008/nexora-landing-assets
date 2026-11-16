@@ -36,12 +36,17 @@ final class NLO_Deen {
 		echo self::ui(); // phpcs:ignore
 	}
 
+	/**
+	 * The app page is served from LiteSpeed's page cache, so a version number written into the HTML can stay old for
+	 * days. The files are therefore added by a tiny inline script with an hourly cache-buster: a new deen.js reaches
+	 * every phone within an hour without purging anything.
+	 */
 	private static function ui() {
 		$base = plugins_url( 'assets/', __FILE__ );
-		$v    = self::VERSION . '.' . (int) @filemtime( __DIR__ . '/assets/deen.js' ); // phpcs:ignore
-		return '<link rel="stylesheet" href="' . esc_url( $base . 'deen.css?v=' . $v ) . '">'
-			. '<script>window.NLO_DEEN_BASE=' . wp_json_encode( $base ) . ';</script>'
-			. '<script src="' . esc_url( $base . 'deen.js?v=' . $v ) . '" defer></script>';
+		return '<script>(function(){var b=' . wp_json_encode( $base ) . ',v="' . self::VERSION . '-"+Math.floor(Date.now()/36e5);window.NLO_DEEN_BASE=b;'
+			. 'var l=document.createElement("link");l.rel="stylesheet";l.href=b+"deen.css?v="+v;document.head.appendChild(l);'
+			. 'var p=document.createElement("script");p.src=b+"prayer.js?v="+v;document.head.appendChild(p);'
+			. 'var s=document.createElement("script");s.src=b+"deen.js?v="+v;s.defer=true;document.head.appendChild(s);})();</script>';
 	}
 
 	/* ------------------------------------------------------------ Agent */
