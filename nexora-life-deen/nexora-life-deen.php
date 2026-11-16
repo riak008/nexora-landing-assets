@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.4.8';
+	const VERSION = '1.4.9';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
@@ -29,6 +29,47 @@ final class NLO_Deen {
 				'callback'            => array( __CLASS__, 'tts' ),
 			)
 		);
+		// GitHub Actions uploads each new build of the "এসো কুরআন শিখি" app here (signed GitHub OIDC token, same check as Nexora Life)
+		register_rest_route(
+			'nexora-life/v1',
+			'/eso-release',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => array( __CLASS__, 'eso_release' ),
+			)
+		);
+	}
+
+	public static function eso_release( $req ) {
+		$auth  = (string) $req->get_header( 'authorization' );
+		$token = preg_match( '/Bearer\s+(\S+)/i', $auth, $m ) ? $m[1] : '';
+		if ( '' === $token || ! class_exists( 'NLO_OIDC' ) ) {
+			return new WP_Error( 'auth', 'unauthorized', array( 'status' => 401 ) );
+		}
+		$ok = NLO_OIDC::verify( $token, 'riak008/nexora-life-app' );
+		if ( true !== $ok ) {
+			return is_wp_error( $ok ) ? $ok : new WP_Error( 'auth', 'unauthorized', array( 'status' => 401 ) );
+		}
+		$files = $req->get_file_params();
+		if ( empty( $files['apk']['tmp_name'] ) || filesize( $files['apk']['tmp_name'] ) < 100000 ) {
+			return new WP_Error( 'file', 'apk missing', array( 'status' => 400 ) );
+		}
+		$up  = wp_upload_dir();
+		$dir = trailingslashit( $up['basedir'] ) . 'eso-quran';
+		wp_mkdir_p( $dir );
+		if ( ! move_uploaded_file( $files['apk']['tmp_name'], $dir . '/eso-quran-shikhi.apk' ) ) {
+			return new WP_Error( 'file', 'could not save', array( 'status' => 500 ) );
+		}
+		$info = array(
+			'version_name' => sanitize_text_field( (string) $req->get_param( 'version_name' ) ),
+			'version_code' => (int) $req->get_param( 'version_code' ),
+			'notes'        => sanitize_textarea_field( (string) $req->get_param( 'notes' ) ),
+			'url'          => trailingslashit( $up['baseurl'] ) . 'eso-quran/eso-quran-shikhi.apk',
+			'time'         => time(),
+		);
+		file_put_contents( $dir . '/latest.json', wp_json_encode( $info ) ); // phpcs:ignore
+		return $info;
 	}
 
 	public static function tts( $req ) {
