@@ -150,6 +150,27 @@
     player.playbackRate = settings.speed;
     return player.play().catch(function () {});
   }
+  var ttsAudio = new Audio(); ttsAudio.preload = 'auto';
+  function chunks(text) {
+    var out = [], parts = String(text).replace(/\s+/g, ' ').split(/(?<=[।.!?,;:—])\s+/);
+    parts.forEach(function (p) { while (p.length > 180) { var k = p.lastIndexOf(' ', 180); if (k < 60) k = 180; out.push(p.slice(0, k)); p = p.slice(k).trim(); } if (p.trim()) out.push(p.trim()); });
+    return out;
+  }
+  /** Spoken audio from Google's TTS (works on any computer/phone, no voice pack needed). */
+  function webTTS(text, lang, done) {
+    var list = chunks(text), i = 0, tok = {}; webTTS.tok = tok;
+    (function next() {
+      if (webTTS.tok !== tok) return;
+      var t = list[i++]; if (!t) return done();
+      ttsAudio.onended = function () { next(); };
+      ttsAudio.onerror = function () { done(); };
+      ttsAudio.src = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' + lang + '&q=' + encodeURIComponent(t);
+      ttsAudio.playbackRate = Math.max(0.5, Math.min(1.5, settings.speed));
+      var pr = ttsAudio.play(); if (pr && pr.catch) pr.catch(function () { done(); });
+    })();
+  }
+  function stopTTS() { webTTS.tok = null; try { ttsAudio.pause(); } catch (e) {} }
+  function hasVoice(re) { try { return window.speechSynthesis && speechSynthesis.getVoices().some(function (v) { return re.test(v.lang); }); } catch (e) { return false; } }
   function speakBn(text, done) {
     text = String(text || '').slice(0, 900);
     if (!text) return done();
@@ -162,7 +183,7 @@
       return;
     }
     if (N && N.speak) { try { N.speak(text); } catch (e) {} setTimeout(done, Math.min(60000, 1500 + text.length * 85)); return; }
-    if (!window.speechSynthesis) return done();
+    if (!hasVoice(/^bn/i)) return webTTS(text, uiLang() === 'en' ? 'bn' : 'bn', done);
     var u = new SpeechSynthesisUtterance(text);
     u.lang = 'bn-BD';
     u.rate = Math.max(0.6, Math.min(1.4, settings.speed));
@@ -239,11 +260,19 @@
     if (settings.meaningVoice && it && it.bn) speakBn(it.bn, next); else next();
   });
   // keep the phone screen on while a recitation is playing (app only)
-  player.addEventListener('play', function () { native('keepAwake', true); updateBar(); });
-  player.addEventListener('pause', function () { if (!queue) native('keepAwake', false); updateBar(); });
+  player.addEventListener('play', function () { native('keepAwake', true); updateBar(); syncPP(); });
+  player.addEventListener('ended', function () { setTimeout(syncPP, 50); });
+  player.addEventListener('pause', function () { if (!queue) native('keepAwake', false); updateBar(); syncPP(); });
   function native(fn, arg) { var N = window.NexoraLifeNative; try { if (N && N[fn]) N[fn](arg); } catch (e) {} }
-  function stopAll() { guideToken = null; segs = null; if (litWord) { litWord.classList.remove('lit'); litWord = null; } queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
-  function setSpeed(v) { settings.speed = v; saveSettings(); player.playbackRate = v; $$('.nld-speed').forEach(function (s) { s.value = String(v); }); }
+  function stopAll() { stopTTS(); guideToken = null; segs = null; if (litWord) { litWord.classList.remove('lit'); litWord = null; } queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
+  function setSpeed(v) { settings.speed = v; saveSettings(); player.playbackRate = v; try { ttsAudio.playbackRate = v; } catch (e) {} $$('.nld-speed,.nld-vspeed').forEach(function (s) { s.value = String(v); }); }
+  function syncPP() {
+    var cur = queue && queue.list[queue.i];
+    $$('.nld-pp').forEach(function (b) {
+      var d = b.closest('.nld-v'), on = cur && d && +d.getAttribute('data-a') === cur.a && +d.getAttribute('data-s') === cur.s && !player.paused;
+      b.textContent = on ? '⏸' : '▶'; b.classList.toggle('on', !!on);
+    });
+  }
 
   var bar = null;
   function updateBar() {
@@ -403,7 +432,7 @@
         '<div class="nld-verses" style="--nldf:' + settings.font + 'px">' + verses.map(function (x) {
           var sajda = meta[7] && meta[7].indexOf(x.a) >= 0;
           return '<div class="nld-v" id="nld-v-' + x.a + '" data-a="' + x.a + '" data-s="' + n + '"><div class="nld-vtop"><span class="nld-num">' + bn(n) + ':' + bn(x.a) + '</span>' + (sajda ? '<span class="nld-sajda">۩ সিজদার আয়াত</span>' : '') +
-            '<button data-act="play" title="এই আয়াত শুনুন">▶</button><button data-act="from" title="এখান থেকে শেষ পর্যন্ত">⏩</button><button data-act="words" title="শব্দে শব্দে">🔤</button><button data-act="meaning" title="বাংলা অর্থ শুনুন">🗣️</button><button data-act="copy" title="কপি">📋</button></div>' +
+            '<button data-act="play" class="nld-pp" title="এই আয়াত চালান / থামান">▶</button><select class="nld-vspeed" title="গতি">' + SPEEDS.map(function (sp) { return '<option value="' + sp[0] + '"' + (sp[0] === settings.speed ? ' selected' : '') + '>' + sp[1] + '</option>'; }).join('') + '</select><button data-act="from" title="এখান থেকে শেষ পর্যন্ত">⏩</button><button data-act="words" title="শব্দে শব্দে">🔤</button><button data-act="meaning" title="বাংলা অর্থ শুনুন">🗣️</button><button data-act="copy" title="কপি">📋</button></div>' +
             '<div class="nld-arv nld-ar" dir="rtl" lang="ar">' + words(x.ar) + ' <span class="nld-end">﴿' + arNum(x.a) + '﴾</span></div>' +
             (settings.showTr ? '<div class="nld-bnv" data-nt="1">' + esc(x.bn) + '</div>' : '') + '<div class="nld-words"></div></div>';
         }).join('') + '</div><p class="nld-src">আরবি: Tanzil উসমানি (হাফস) · বাংলা অর্থ: ' + esc((TRANSLATIONS.filter(function (t) { return t.id === settings.tr; })[0] || {}).name) + ' · অডিও: everyayah.com</p>';
@@ -430,12 +459,26 @@
       }
       $$('.nld-v', v).forEach(function (d) {
         var a = +d.getAttribute('data-a');
-        $('.nld-arv', d).onclick = function () { playQueue([list[a - 1]], 0); };
+        // a word plays only that word (quran.com word audio); the ▶ button plays the whole ayah
+        $$('.nld-tok', d).forEach(function (t) { t.onclick = function (e) {
+          e.stopPropagation(); stopAll();
+          var p3 = function (x) { return ('00' + x).slice(-3); };
+          $$('.nld-tok.lit,.nld-tok.read', v).forEach(function (x) { x.classList.remove('lit', 'read'); });
+          t.classList.add('lit');
+          playUrl(WBW + 'wbw/' + p3(n) + '_' + p3(a) + '_' + p3(t.getAttribute('data-w')) + '.mp3');
+          var off = function () { t.classList.remove('lit'); player.removeEventListener('ended', off); player.removeEventListener('pause', off); };
+          player.addEventListener('ended', off); player.addEventListener('pause', off);
+        }; });
+        var vs = $('.nld-vspeed', d); vs.onclick = function (e) { e.stopPropagation(); }; vs.onchange = function () { setSpeed(+this.value); };
         $$('[data-act]', d).forEach(function (b) {
           b.onclick = function (e) {
             e.stopPropagation();
             var act = b.getAttribute('data-act');
-            if (act === 'play') playQueue([list[a - 1]], 0);
+            if (act === 'play') {
+              var cur = queue && queue.list[queue.i];
+              if (cur && cur.s === n && cur.a === a && queue.list.length === 1) { if (player.paused) player.play(); else player.pause(); }
+              else playQueue([list[a - 1]], 0);
+            }
             if (act === 'from') playQueue(list, a - 1);
             if (act === 'meaning') { stopAll(); speakBn(list[a - 1].bn, function () {}); }
             if (act === 'copy') { var t = verses[a - 1].ar + '\n' + verses[a - 1].bn + '\n(সূরা ' + meta[1] + ' ' + bn(n) + ':' + bn(a) + ')'; if (navigator.clipboard) navigator.clipboard.writeText(t); b.textContent = '✓'; }
@@ -650,16 +693,16 @@
     var N = window.NexoraLifeNative;
     if (N && N.sayAr) {
       var st = 0; try { st = N.arReady(); } catch (e) {}
-      if (st === 3) { toastOnce('ফোনে আরবি ভয়েস নেই: সেটিংস › ভাষা › টেক্সট-টু-স্পিচ থেকে Google-এর আরবি ভয়েস ডাউনলোড করুন।'); return done(); }
+      if (st === 3) return webTTS(text, 'ar', done);
       try { N.sayAr(text); } catch (e) { return done(); }
       var t0 = Date.now();
       (function wait() { setTimeout(function () { var busy = false; try { busy = N.speaking(); } catch (e) {} if ((busy || Date.now() - t0 < 700) && Date.now() - t0 < 15000) wait(); else done(); }, 250); })();
       return;
     }
-    if (!window.speechSynthesis) return done();
+    if (!hasVoice(/^ar/i)) return webTTS(text, 'ar', done);
     var u = new SpeechSynthesisUtterance(text);
     u.lang = 'ar-SA'; u.rate = Math.max(0.5, Math.min(1.2, 0.8 * settings.speed));
-    var vv = arVoice(); if (vv) u.voice = vv; else if (N && N.say) toastOnce('অ্যাপ আপডেট করুন (১.০.২৬ বা পরের) — তাহলে আরবি উচ্চারণ শোনা যাবে।');
+    var vv = arVoice(); if (vv) u.voice = vv;
     u.onend = u.onerror = function () { done(); };
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   }
