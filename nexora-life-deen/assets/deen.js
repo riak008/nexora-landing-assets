@@ -229,7 +229,8 @@
   var root = null, view = null, state = { tab: 'quran' };
 
   function panel() {
-    root = el('<div class="nld"><div class="nld-tabs">' +
+    // data-nt: the hub machine-translates Bangla text when its language is not Bangla; Quran, hadith and lessons stay as written
+    root = el('<div class="nld" data-nt="1"><div class="nld-tabs">' +
       [['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদিস'], ['learn', '🎓', 'শিখুন'], ['quiz', '❓', 'কুইজ'], ['settings', '⚙️', 'সেটিংস']].map(function (t) {
         return '<button data-dt="' + t[0] + '"><span>' + t[1] + '</span>' + t[2] + '</button>';
       }).join('') + '</div><form class="nld-ask"><input placeholder="যেমন: ২ নম্বর সূরার ২৫৫ নম্বর আয়াত, সূরা ইয়াসিন, বুখারী ১" aria-label="কী শুনতে চান"><button>খুঁজুন</button></form><div class="nld-view"></div></div>');
@@ -693,7 +694,7 @@
   function addNav() {
     $$('.nlo-nav').forEach(function (nav) {
       if ($('[data-deen]', nav)) return;
-      var b = el('<button data-deen="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
+      var b = el('<button data-deen="1" data-nt="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
       var after = $('[data-tab="health"]', nav) || $('[data-tab="jobs"]', nav);
       if (after && after.nextSibling) nav.insertBefore(b, after.nextSibling); else nav.appendChild(b);
       b.onclick = function (e) { e.preventDefault(); show(); window.scrollTo(0, 0); };
@@ -702,7 +703,7 @@
     $$('[data-tab]').forEach(function (b) { if (!b._nld) { b._nld = 1; b.addEventListener('click', function () { $$('[data-deen]').forEach(function (x) { x.classList.remove('on'); }); stopAll(); }); } });
   }
   function playerBar() {
-    bar = el('<div class="nld-bar"><span class="nld-bar-t">তিলাওয়াত</span><button data-bar="play">▶</button><select class="nld-speed" title="গতি">' + SPEEDS.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === settings.speed ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select><button data-bar="stop">⏹</button></div>');
+    bar = el('<div class="nld-bar" data-nt="1"><span class="nld-bar-t">তিলাওয়াত</span><button data-bar="play">▶</button><select class="nld-speed" title="গতি">' + SPEEDS.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === settings.speed ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') + '</select><button data-bar="stop">⏹</button></div>');
     document.body.appendChild(bar);
     $('[data-bar=play]', bar).onclick = function () { if (player.paused) { if (player.src) player.play(); } else player.pause(); };
     $('[data-bar=stop]', bar).onclick = stopAll;
