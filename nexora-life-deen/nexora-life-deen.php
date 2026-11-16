@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Nexora Life Deen (Quran & Hadith)
  * Description: 📖 কুরআন শরীফ (১১৪ সূরা, আরবি + বাংলা অর্থ, আয়াত ধরে তিলাওয়াত, গতি কম-বেশি), সহীহ বুখারী, সহীহ মুসলিম, জামে তিরমিযী, আর একদম শুরু থেকে কুরআন শেখা (হরফ, মাখরাজ, হরকত, তাজবীদ, প্র্যাকটিস, কুইজ)। Nexora Life OS-এর ভেতরে (ওয়েব + অ্যাপ) "কুরআন ও হাদিস" ট্যাব হিসেবে আসে, আর Riak agent-কে "২ নম্বর সূরার ২৫৫ নম্বর আয়াত শোনাও" বললে সেটা খুলে তিলাওয়াত করে।
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: Nexora Forward
  * Requires PHP: 7.4
  */
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.2.1';
+	const VERSION = '1.3.0';
 
 	public static function init() {
 		add_action( 'admin_footer-toplevel_page_nexora-life', array( __CLASS__, 'print_ui' ) );
@@ -86,7 +86,8 @@ final class NLO_Deen {
 			'reply'      => $reply,
 			'reply_src'  => 'bn',
 			'reply_lang' => 'bn',
-			'actions'    => array(),
+			// app 1.0.25+: opens the Quran & Hadith tab even when the request came by voice with the app in the background
+			'actions'    => array( array( 'do' => 'deen', 'cmd' => $cmd ) ),
 			'saved'      => array(),
 			'parsed'     => array( array_merge( array( 'type' => 'deen' ), $cmd ) ),
 			'deen'       => $cmd,
@@ -103,86 +104,120 @@ final class NLO_Deen {
 		$t = str_replace( "\u{09DF}", "\u{09AF}\u{09BC}", mb_strtolower( $text ) );
 		$t = strtr( $t, array( '০' => '0', '১' => '1', '২' => '2', '৩' => '3', '৪' => '4', '৫' => '5', '৬' => '6', '৭' => '7', '৮' => '8', '৯' => '9' ) );
 		$t = str_replace( array( 'সুরা', 'ছুরা', 'ছূরা' ), 'সূরা', $t );
-		$t = str_replace( array( 'আয়াত', 'আয়াত', 'আইয়াত', 'আয়াতের', 'আয়াতের' ), 'আয়াত', $t );
+		$t = str_replace( array( 'আইয়াত', 'আয়াতের' ), 'আয়াত', $t );
+		$t = preg_replace( '/\b(surah|surat|sura|shura)\b/u', 'সূরা', $t );
+		$t = preg_replace( '/\b(ayat|ayah|aayat|ayaat|ayath|verse)\b/u', 'আয়াত', $t );
 
-		// Hadith: "বুখারী ১২", "মুসলিম শরীফের ৮ নম্বর হাদিস", "tirmidhi 20"
-		$books = array(
-			'bukhari'  => '(বুখারী|বুখারি|বোখারী|bukhari)',
-			'muslim'   => '(মুসলিম|muslim)',
-			'tirmidhi' => '(তিরমিযী|তিরমিজি|তিরমিজী|তিরমিযি|tirmidhi|tirmizi)',
-		);
-		if ( preg_match( '/হাদিস|হাদীস|hadith/u', $t ) || preg_match( '/(বুখারী|বুখারি|তিরমিযী|তিরমিজি|bukhari|tirmidhi)/u', $t ) ) {
+		if ( preg_match( '/হাদিস|হাদীস|hadith|hadis/u', $t ) || preg_match( '/(বুখারী|বুখারি|তিরমিযী|তিরমিজি|bukhari|tirmidhi|tirmizi)/u', $t ) ) {
+			$books = array(
+				'bukhari'  => '(বুখারী|বুখারি|বোখারী|bukhari|bokhari)',
+				'muslim'   => '(মুসলিম|muslim)',
+				'tirmidhi' => '(তিরমিযী|তিরমিজি|তিরমিজী|তিরমিযি|tirmidhi|tirmizi)',
+			);
 			foreach ( $books as $key => $re ) {
 				if ( preg_match( '/' . $re . '/u', $t ) && preg_match( '/(\d{1,4})/', $t, $m ) ) {
 					return array( 'kind' => 'hadith', 'book' => $key, 'number' => (int) $m[1] );
 				}
 			}
 		}
-
 		// "নামাজের সময় কখন", "মাগরিবের আযান", "সেহরির শেষ সময়" — not "নামাজের রিমাইন্ডার দাও" (that stays with Riak)
-		if ( ( preg_match( '/আযান|আজান|সেহরি|সাহরি|ইফতার|ওয়াক্ত|prayer time|azan/u', $t ) || ( preg_match( '/নামাজ|নামায|namaz/u', $t ) && preg_match( '/সময়|কখন|সূচি|time/u', $t ) ) ) && ! preg_match( '/সূরা|আয়াত|রিমাইন্ডার|reminder|অ্যালার্ম দাও/u', $t ) ) {
+		if ( ( preg_match( '/আযান|আজান|সেহরি|সাহরি|ইফতার|ওয়াক্ত|prayer time|azan|ajan/u', $t ) || ( preg_match( '/নামাজ|নামায|namaz|namaj/u', $t ) && preg_match( '/সময়|কখন|সূচি|time|somoy/u', $t ) ) ) && ! preg_match( '/সূরা|আয়াত|রিমাইন্ডার|reminder|অ্যালার্ম দাও/u', $t ) ) {
 			return array( 'kind' => 'prayer' );
 		}
-
-		$counts = self::counts();
-		$is_quran = preg_match( '/সূরা|আয়াত|কুরআন|কোরআন|quran|surah|sura|ayah|ayat|তিলাওয়াত|তেলাওয়াত/u', $t ) || preg_match( '/^\s*\d{1,3}\s*[:।]\s*\d{1,3}\s*$/u', $t );
+		$is_quran = preg_match( '/সূরা|আয়াত|কুরআন|কোরআন|quran|koran|তিলাওয়াত|তেলাওয়াত|tilawat|telawat/u', $t ) || preg_match( '/^\s*\d{1,3}\s*[:।]\s*\d{1,3}\s*$/u', $t );
 		if ( ! $is_quran ) {
 			return null;
 		}
-		$s = 0;
-		$a = 0;
-		if ( preg_match( '/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayatul\s*kursi/u', $t ) ) {
-			$s = 2;
-			$a = 255;
-		} elseif ( preg_match( '/(\d{1,3})\s*[:।]\s*(\d{1,3})/u', $t, $m ) ) {
+		if ( preg_match( '/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayatul\s*kursi|আয়াতul\s*kursi/u', $t ) ) {
+			return array( 'kind' => 'ayah', 'surah' => 2, 'ayah' => 255 );
+		}
+		$num = '(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|তম|number|num|no\.?|nong|nombor|th)?';
+		$s   = 0;
+		$a   = 0;
+		if ( preg_match( '/(\d{1,3})\s*[:।]\s*(\d{1,3})/u', $t, $m ) ) {
 			$s = (int) $m[1];
 			$a = (int) $m[2];
-		} elseif ( preg_match( '/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|no\.?|number)?\s*সূরা[^\d]*?(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*(?:আয়াত|ayah|ayat)/u', $t, $m ) ) {
-			$s = (int) $m[1];
-			$a = (int) $m[2];
-		} elseif ( preg_match( '/সূরা\s*(\d{1,3})[^\d]+(\d{1,3})/u', $t, $m ) ) {
-			$s = (int) $m[1];
-			$a = (int) $m[2];
-		} elseif ( preg_match( '/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*(?:আয়াত|ayah|ayat)[^\d]*?(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*সূরা/u', $t, $m ) ) {
-			$s = (int) $m[2];
-			$a = (int) $m[1];
 		} else {
-			$s = self::surah_by_name( $t );
-			if ( $s && preg_match( '/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*(?:আয়াত|ayah|ayat)|(?:আয়াত|ayah|ayat)\s*(\d{1,3})/u', $t, $m ) ) {
-				$a = (int) ( $m[1] ? $m[1] : $m[2] );
+			$s_at = -1;
+			if ( preg_match( '/(\d{1,3})\s*' . $num . '\s*সূরা/u', $t, $m, PREG_OFFSET_CAPTURE ) || preg_match( '/সূরা\s*' . $num . '\s*(\d{1,3})/u', $t, $m, PREG_OFFSET_CAPTURE ) || preg_match( '/^\s*(\d{1,3})\s*[.)।,-]/u', $t, $m, PREG_OFFSET_CAPTURE ) ) {
+				$s    = (int) $m[1][0];
+				$s_at = $m[1][1];
 			}
-			if ( ! $s && preg_match( '/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*সূরা|সূরা\s*(\d{1,3})/u', $t, $m ) ) {
-				$s = (int) ( $m[1] ? $m[1] : $m[2] );
+			if ( preg_match_all( '/(\d{1,3})\s*' . $num . '\s*আয়াত/u', $t, $all, PREG_OFFSET_CAPTURE ) ) {
+				foreach ( $all[1] as $hit ) {
+					if ( $hit[1] !== $s_at ) {
+						$a = (int) $hit[0];
+						break;
+					}
+				}
+			}
+			if ( ! $a && preg_match( '/আয়াত\s*' . $num . '\s*(\d{1,3})/u', $t, $m, PREG_OFFSET_CAPTURE ) && $m[1][1] !== $s_at ) {
+				$a = (int) $m[1][0];
+			}
+			if ( ! $s ) {
+				$s = self::surah_by_name( $t );
+			}
+			if ( ! $s && $a && preg_match_all( '/\d{1,3}/', $t, $nums ) ) {
+				$rest = array_values( array_filter( array_map( 'intval', $nums[0] ), static function ( $x ) use ( $a ) { return $x !== $a; } ) );
+				if ( 1 === count( $rest ) ) {
+					$s = $rest[0];
+				}
 			}
 		}
+		$counts = self::counts();
 		if ( $s < 1 || $s > 114 ) {
 			return null;
 		}
 		if ( $a > 0 ) {
-			if ( $a > $counts[ $s - 1 ] ) {
-				return null;
-			}
-			return array( 'kind' => 'ayah', 'surah' => $s, 'ayah' => $a );
+			return $a > $counts[ $s - 1 ] ? null : array( 'kind' => 'ayah', 'surah' => $s, 'ayah' => $a );
 		}
 		return array( 'kind' => 'surah', 'surah' => $s );
 	}
 
-	/** Longest Bangla/English name found in the text wins ("আলাক" is not "আলা", "নাসর" is not "নাস"). */
-	private static function surah_by_name( $t ) {
-		if ( ! preg_match( '/সূরা|surah|sura/u', $t ) ) {
-			return 0;
+	private static function latin( $x, $strip_article = true ) {
+		$x = strtolower( $x );
+		if ( $strip_article ) {
+			$x = preg_replace( '/^(aal|al|an|ar|as|at|ad|adh|az|ash)[-\'’ ]/', '', $x );
 		}
+		$x = preg_replace( '/[^a-z]/', '', $x );
+		$x = preg_replace( '/(.)\1+/', '$1', $x );
+		return strtr( $x, array( 'o' => 'u', 'e' => 'i', 'q' => 'k' ) );
+	}
+
+	/** Longest Bangla or English name found wins ("আলাক" is not "আলা", "an-nasr" is not "an-nas"). */
+	private static function surah_by_name( $t ) {
+		$said = (bool) preg_match( '/সূরা|surah|sura/u', $t );
 		$norm = static function ( $x ) {
-			return str_replace( "\u{09DF}", "\u{09AF}\u{09BC}", preg_replace( '/[\s\-\'’ʼ]+/u', '', $x ) );
+			return str_replace( "\u{09DF}", "\u{09AF}\u{09BC}", preg_replace( '/[\s\-\'’ʼ.]+/u', '', $x ) );
 		};
-		$t    = $norm( $t );
+		$bn_t = $norm( $t );
+		$la_t = self::latin( $t, false );
 		$best = 0;
 		$len  = 0;
+		$latin_names = array();
+		$file = __DIR__ . '/assets/surahs.json';
+		$list = is_readable( $file ) ? json_decode( (string) file_get_contents( $file ), true ) : array();
+		foreach ( (array) $list as $row ) {
+			$latin_names[ (int) $row[0] ][] = self::latin( $row[1] );
+		}
 		foreach ( self::names() as $n => $aliases ) {
 			foreach ( $aliases as $alias ) {
-				$alias = $norm( $alias );
-				$l     = mb_strlen( $alias );
-				if ( $l > $len && false !== mb_strpos( $t, $alias ) ) {
+				if ( preg_match( '/^[a-z]+$/', $alias ) ) {
+					$latin_names[ $n ][] = self::latin( $alias );
+					continue;
+				}
+				$al = $norm( $alias );
+				$l  = mb_strlen( $al );
+				if ( $l > $len && ( $said || $l >= 3 ) && false !== mb_strpos( $bn_t, $al ) ) {
+					$best = $n;
+					$len  = $l;
+				}
+			}
+		}
+		foreach ( $latin_names as $n => $aliases ) {
+			foreach ( $aliases as $al ) {
+				$l = strlen( $al );
+				if ( $l > $len && ( $said || $l >= 3 ) && false !== strpos( $la_t, $al ) ) {
 					$best = $n;
 					$len  = $l;
 				}

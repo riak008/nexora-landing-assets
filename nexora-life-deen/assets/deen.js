@@ -170,8 +170,34 @@
     if (!it) { queue = null; onAyah(null); updateBar(); return; }
     onAyah(it);
     updateBar();
-    playUrl(ayahUrl(it.s, it.a), ayahUrl(it.s, it.a, true));
+    segs = null;
+    var token = queue;
+    // quran.com has word timings for these reciters: play their file and light up each word as it is read
+    var rid = QCOM_RECITER[settings.reciter];
+    if (!rid) { playUrl(ayahUrl(it.s, it.a), ayahUrl(it.s, it.a, true)); return; }
+    var done = false;
+    var fallback = setTimeout(function () { if (!done && queue === token) { done = true; playUrl(ayahUrl(it.s, it.a), ayahUrl(it.s, it.a, true)); } }, 2500);
+    getJSON(QCOM + 'recitations/' + rid + '/by_ayah/' + it.s + ':' + it.a, false).then(function (j) {
+      if (done || queue !== token) return;
+      var f = j.audio_files && j.audio_files[0];
+      if (!f || !f.url) throw new Error('no audio');
+      done = true; clearTimeout(fallback);
+      segs = { s: it.s, a: it.a, list: (f.segments || []).map(function (x) { return x.length >= 4 ? [x[x.length - 3], x[x.length - 2], x[x.length - 1]] : x; }) };
+      playUrl(/^https?:/.test(f.url) ? f.url : 'https://verses.quran.com/' + f.url.replace(/^\/+/, ''), ayahUrl(it.s, it.a));
+    }).catch(function () { if (!done && queue === token) { done = true; clearTimeout(fallback); playUrl(ayahUrl(it.s, it.a), ayahUrl(it.s, it.a, true)); } });
   }
+  var QCOM_RECITER = { Alafasy_128kbps: 7, Abdul_Basit_Murattal_192kbps: 2, Husary_128kbps: 6, Minshawy_Murattal_128kbps: 9 };
+  var segs = null, litWord = null;
+  player.addEventListener('timeupdate', function () {
+    if (!segs || !segs.list.length) return;
+    var ms = player.currentTime * 1000, pos = 0;
+    for (var i = 0; i < segs.list.length; i++) { var g = segs.list[i]; if (ms >= g[1] && ms < g[2] + 120) { pos = g[0]; break; } }
+    var el = pos ? document.querySelector('#nld-v-' + segs.a + ' .nld-tok[data-w="' + pos + '"]') : null;
+    if (el === litWord) return;
+    if (litWord) litWord.classList.remove('lit');
+    litWord = el;
+    if (el && document.querySelector('#nld-v-' + segs.a) && document.querySelector('#nld-v-' + segs.a).getAttribute('data-s') == segs.s) el.classList.add('lit');
+  });
   player.addEventListener('ended', function () {
     if (!queue) { updateBar(); return; }
     var it = queue.list[queue.i];
@@ -187,7 +213,7 @@
   player.addEventListener('play', function () { native('keepAwake', true); updateBar(); });
   player.addEventListener('pause', function () { if (!queue) native('keepAwake', false); updateBar(); });
   function native(fn, arg) { var N = window.NexoraLifeNative; try { if (N && N[fn]) N[fn](arg); } catch (e) {} }
-  function stopAll() { queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
+  function stopAll() { segs = null; if (litWord) { litWord.classList.remove('lit'); litWord = null; } queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
   function setSpeed(v) { settings.speed = v; saveSettings(); player.playbackRate = v; $$('.nld-speed').forEach(function (s) { s.value = String(v); }); }
 
   var bar = null;
@@ -201,34 +227,52 @@
 
   /* ------------------------------------------------------------ command parser (same rules as the PHP side) */
   var NAMES = { 3: ['আলইমরান', 'আল ইমরান', 'imran'], 6: ['আনআম', 'আনয়াম', 'anam'], 7: ['আরাফ', "আ'রাফ", 'araf'], 17: ['বনিইসরাইল', 'বনী ইসরাঈল', 'ইসরা', 'isra'], 41: ['হামীমসাজদা', 'ফুসসিলাত', 'fussilat'], 32: ['সাজদা', 'সিজদা', 'sajda'], 55: ['আররহমান', 'আর রাহমান', 'রহমান', 'rahman'], 40: ['গাফির', 'মুমিন', 'ghafir'], 23: ['মুমিনুন', 'muminun'], 1: ['ফাতিহা', 'ফাতেহা', 'fatiha'], 2: ['বাকারা', 'বাকারাহ', 'baqara'], 4: ['নিসা', 'nisa'], 5: ['মায়িদা', 'মায়েদা', 'মাইদা', 'maida'], 8: ['আনফাল', 'anfal'], 9: ['তাওবা', 'তওবা', 'tawba'], 10: ['ইউনুস', 'yunus'], 11: ['হুদ', 'hud'], 12: ['ইউসুফ', 'yusuf'], 13: ['রাদ', "রা'দ", 'rad'], 14: ['ইব্রাহিম', 'ইবরাহীম', 'ibrahim'], 15: ['হিজর', 'hijr'], 16: ['নাহল', 'nahl'], 18: ['কাহফ', 'কাহাফ', 'kahf'], 19: ['মারইয়াম', 'মরিয়ম', 'মারিয়াম', 'maryam'], 20: ['ত্বহা', 'তোয়াহা', 'ত্বা-হা', 'taha'], 21: ['আম্বিয়া', 'anbiya'], 22: ['হজ্জ', 'হজ', 'hajj'], 24: ['নূর', 'নুর', 'nur'], 25: ['ফুরকান', 'furqan'], 26: ['শুআরা', 'শোয়ারা', 'shuara'], 27: ['নামল', 'naml'], 28: ['কাসাস', 'qasas'], 29: ['আনকাবুত', 'ankabut'], 30: ['রুম', 'rum'], 31: ['লুকমান', 'luqman'], 33: ['আহযাব', 'আহজাব', 'ahzab'], 34: ['সাবা', 'saba'], 35: ['ফাতির', 'fatir'], 36: ['ইয়াসিন', 'ইয়াসীন', 'ইয়াছিন', 'yasin'], 37: ['সাফফাত', 'saffat'], 38: ['সোয়াদ', 'ছোয়াদ', 'sad'], 39: ['যুমার', 'জুমার', 'zumar'], 42: ['শূরা', 'শুরা', 'shura'], 43: ['যুখরুফ', 'zukhruf'], 44: ['দুখান', 'dukhan'], 45: ['জাসিয়া', 'jathiya'], 46: ['আহকাফ', 'ahqaf'], 47: ['মুহাম্মদ', 'মুহাম্মাদ', 'muhammad'], 48: ['ফাতহ', 'fath'], 49: ['হুজুরাত', 'hujurat'], 50: ['ক্বাফ', 'কাফ', 'qaf'], 51: ['যারিয়াত', 'জারিয়াত', 'dhariyat'], 52: ['তূর', 'তুর', 'tur'], 53: ['নাজম', 'najm'], 54: ['কামার', 'ক্বামার', 'qamar'], 56: ['ওয়াকিয়া', 'ওয়াকিয়াহ', 'ওয়াক্বিয়াহ', 'waqia'], 57: ['হাদিদ', 'হাদীদ', 'hadid'], 58: ['মুজাদালা', 'mujadila'], 59: ['হাশর', 'hashr'], 60: ['মুমতাহিনা', 'mumtahina'], 61: ['সফ', 'ছফ', 'saff'], 62: ['জুমুআ', 'জুমআ', 'জুমা', 'jumuah'], 63: ['মুনাফিকুন', 'munafiqun'], 64: ['তাগাবুন', 'taghabun'], 65: ['তালাক', 'talaq'], 66: ['তাহরীম', 'তাহরিম', 'tahrim'], 67: ['মুলক', 'mulk'], 68: ['কলম', 'কালাম', 'qalam'], 69: ['হাক্কাহ', 'হাক্কা', 'haqqa'], 70: ['মাআরিজ', 'maarij'], 71: ['নূহ', 'নুহ', 'nuh'], 72: ['জিন', 'jinn'], 73: ['মুযযাম্মিল', 'মুজাম্মিল', 'muzzammil'], 74: ['মুদ্দাসসির', 'মুদ্দাছছির', 'muddathir'], 75: ['কিয়ামাহ', 'কিয়ামা', 'qiyama'], 76: ['দাহর', 'ইনসান', 'insan'], 77: ['মুরসালাত', 'mursalat'], 78: ['নাবা', 'naba'], 79: ['নাযিয়াত', 'নাজিয়াত', 'naziat'], 80: ['আবাসা', 'abasa'], 81: ['তাকভীর', 'তাকবির', 'takwir'], 82: ['ইনফিতার', 'infitar'], 83: ['মুতাফফিফীন', 'মুতাফফিফিন', 'mutaffifin'], 84: ['ইনশিকাক', 'inshiqaq'], 85: ['বুরুজ', 'buruj'], 86: ['তারিক', 'tariq'], 87: ['আলা', "আ'লা", 'ala'], 88: ['গাশিয়া', 'ghashiya'], 89: ['ফজর', 'fajr'], 90: ['বালাদ', 'balad'], 91: ['শামস', 'shams'], 92: ['লাইল', 'lail'], 93: ['দুহা', 'দোহা', 'duha'], 94: ['ইনশিরাহ', 'আলাম নাশরাহ', 'শারহ', 'sharh'], 95: ['ত্বীন', 'তীন', 'tin'], 96: ['আলাক', 'alaq'], 97: ['কদর', 'ক্বদর', 'qadr'], 98: ['বাইয়্যিনাহ', 'বাইয়িনাহ', 'bayyina'], 99: ['যিলযাল', 'জিলজাল', 'zalzala'], 100: ['আদিয়াত', 'adiyat'], 101: ['কারিয়া', 'ক্বারিয়াহ', 'qaria'], 102: ['তাকাসুর', 'takathur'], 103: ['আসর', 'asr'], 104: ['হুমাযা', 'হুমাজা', 'humaza'], 105: ['ফীল', 'ফিল', 'fil'], 106: ['কুরাইশ', 'quraish'], 107: ['মাউন', 'maun'], 108: ['কাওসার', 'kawthar'], 109: ['কাফিরুন', 'kafirun'], 110: ['নাসর', 'nasr'], 111: ['লাহাব', 'মাসাদ', 'lahab'], 112: ['ইখলাস', 'ikhlas'], 113: ['ফালাক', 'ফালাক্ব', 'falaq'], 114: ['নাস', 'nas'] };
-  function norm(x) { return String(x).replace(/য়/g, 'য়').replace(/[\s\-'’ʼ]+/g, ''); }
+  function norm(x) { return String(x).replace(/য়/g, 'য়').replace(/[\s\-'’ʼ.]+/g, ''); }
+  // English spellings: "Al-Waaqia", "waqia", "Yaseen", "yasin" all become the same key
+  function latin(x) { return String(x).toLowerCase().replace(/^(aal|al|an|ar|as|at|ad|adh|az|ash)[-'’ ]/, '').replace(/[^a-z]/g, '').replace(/(.)\1+/g, '$1').replace(/o/g, 'u').replace(/e/g, 'i').replace(/q/g, 'k'); }
+  var LATIN = null;
+  function latinNames() {
+    if (LATIN && (LATIN._full || !SURAHS)) return LATIN;
+    LATIN = { _full: !!SURAHS };
+    (SURAHS || []).forEach(function (x) { LATIN[x[0]] = [latin(x[1])]; });
+    Object.keys(NAMES).forEach(function (n) { NAMES[n].forEach(function (al) { if (/^[a-z]+$/.test(al)) (LATIN[n] = LATIN[n] || []).push(latin(al)); }); });
+    return LATIN;
+  }
+  /** Longest name found wins ("আলাক" is not "আলা", "an-nasr" is not "an-nas"). */
   function surahByName(t) {
-    if (!/সূরা|surah|sura/.test(t)) return 0;
-    t = norm(t);
+    var said = /সূরা|surah|sura/.test(t);
+    var bnT = norm(t), laT = String(t).toLowerCase().replace(/[^a-z]/g, '').replace(/(.)\1+/g, '$1').replace(/o/g, 'u').replace(/e/g, 'i').replace(/q/g, 'k');
     var best = 0, len = 0;
-    Object.keys(NAMES).forEach(function (n) { NAMES[n].forEach(function (al) { al = norm(al); if (al.length > len && t.indexOf(al) >= 0) { best = +n; len = al.length; } }); });
+    Object.keys(NAMES).forEach(function (n) { NAMES[n].forEach(function (al) { if (/[a-z]/.test(al)) return; al = norm(al); if (al.length > len && (said || al.length >= 3) && bnT.indexOf(al) >= 0) { best = +n; len = al.length; } }); });
+    var L = latinNames();
+    Object.keys(L).forEach(function (n) { if (n === '_full') return; L[n].forEach(function (al) { if (al.length > len && (said || al.length >= 3) && laT.indexOf(al) >= 0) { best = +n; len = al.length; } }); });
     return best;
   }
+  var NUMW = '(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|তম|number|num|no\\.?|nong|nombor|th)?';
   function parseCommand(text) {
     var t = en(String(text || '').toLowerCase().replace(/য়/g, 'য়'));
-    t = t.replace(/সুরা|ছুরা|ছূরা/g, 'সূরা').replace(/আইয়াত|আয়াতের/g, 'আয়াত');
-    if (/হাদিস|হাদীস|hadith/.test(t) || /(বুখারী|বুখারি|তিরমিযী|তিরমিজি|bukhari|tirmidhi)/.test(t)) {
-      var books = { bukhari: /(বুখারী|বুখারি|বোখারী|bukhari)/, muslim: /(মুসলিম|muslim)/, tirmidhi: /(তিরমিযী|তিরমিজি|তিরমিজী|তিরমিযি|tirmidhi|tirmizi)/ };
+    t = t.replace(/সুরা|ছুরা|ছূরা/g, 'সূরা').replace(/আইয়াত|আয়াতের/g, 'আয়াত').replace(/\b(surah|surat|sura|shura)\b/g, 'সূরা').replace(/\b(ayat|ayah|aayat|ayaat|ayath|verse)\b/g, 'আয়াত');
+    if (/হাদিস|হাদীস|hadith|hadis/.test(t) || /(বুখারী|বুখারি|তিরমিযী|তিরমিজি|bukhari|tirmidhi|tirmizi)/.test(t)) {
+      var books = { bukhari: /(বুখারী|বুখারি|বোখারী|bukhari|bokhari)/, muslim: /(মুসলিম|muslim)/, tirmidhi: /(তিরমিযী|তিরমিজি|তিরমিজী|তিরমিযি|tirmidhi|tirmizi)/ };
       for (var k in books) { var m0 = t.match(/(\d{1,4})/); if (books[k].test(t) && m0) return { kind: 'hadith', book: k, number: +m0[1] }; }
     }
-    if ((/আযান|আজান|সেহরি|সাহরি|ইফতার|ওয়াক্ত|prayer time|azan/.test(t) || (/নামাজ|নামায|namaz/.test(t) && /সময়|কখন|সূচি|time/.test(t))) && !/সূরা|আয়াত|রিমাইন্ডার|reminder|অ্যালার্ম দাও/.test(t)) return { kind: 'prayer' };
-    var isQ = /সূরা|আয়াত|কুরআন|কোরআন|quran|surah|sura|ayah|ayat|তিলাওয়াত|তেলাওয়াত/.test(t) || /^\s*\d{1,3}\s*[:।]\s*\d{1,3}\s*$/.test(t);
+    if ((/আযান|আজান|সেহরি|সাহরি|ইফতার|ওয়াক্ত|prayer time|azan|ajan/.test(t) || (/নামাজ|নামায|namaz|namaj/.test(t) && /সময়|কখন|সূচি|time|somoy/.test(t))) && !/সূরা|আয়াত|রিমাইন্ডার|reminder|অ্যালার্ম দাও/.test(t)) return { kind: 'prayer' };
+    var isQ = /সূরা|আয়াত|কুরআন|কোরআন|quran|koran|তিলাওয়াত|তেলাওয়াত|tilawat|telawat/.test(t) || /^\s*\d{1,3}\s*[:।]\s*\d{1,3}\s*$/.test(t);
     if (!isQ) return null;
     var s = 0, a = 0, m;
-    if (/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayatul\s*kursi/.test(t)) { s = 2; a = 255; }
-    else if ((m = t.match(/(\d{1,3})\s*[:।]\s*(\d{1,3})/))) { s = +m[1]; a = +m[2]; }
-    else if ((m = t.match(/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার|নম্বরের|নাম্বারের|no\.?|number)?\s*সূরা[^\d]*?(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*(?:আয়াত|ayah|ayat)/))) { s = +m[1]; a = +m[2]; }
-    else if ((m = t.match(/সূরা\s*(\d{1,3})[^\d]+(\d{1,3})/))) { s = +m[1]; a = +m[2]; }
-    else if ((m = t.match(/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*(?:আয়াত|ayah|ayat)[^\d]*?(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*সূরা/))) { s = +m[2]; a = +m[1]; }
+    if (/আয়াতুল\s*কুরসি|আয়াতুল\s*কুরসী|ayatul\s*kursi|আয়াতul\s*kursi/.test(t)) return { kind: 'ayah', surah: 2, ayah: 255 };
+    if ((m = t.match(/(\d{1,3})\s*[:।]\s*(\d{1,3})/))) { s = +m[1]; a = +m[2]; }
     else {
-      s = surahByName(t);
-      if (s && (m = t.match(/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*(?:আয়াত|ayah|ayat)|(?:আয়াত|ayah|ayat)\s*(\d{1,3})/))) a = +(m[1] || m[2]);
-      if (!s && (m = t.match(/(\d{1,3})\s*(?:নং|নম্বর|নাম্বার)?\s*সূরা|সূরা\s*(\d{1,3})/))) s = +(m[1] || m[2]);
+      // surah number first: "২ নম্বর সূরা", "সূরা ২", "56. Al-Waaqia" (a number that starts the request)
+      var sAt = -1;
+      if ((m = t.match(new RegExp('(\\d{1,3})\\s*' + NUMW + '\\s*সূরা'))) || (m = t.match(new RegExp('সূরা\\s*' + NUMW + '\\s*(\\d{1,3})'))) || (m = t.match(/^\s*(\d{1,3})\s*[.)।,-]/))) { s = +m[1]; sAt = m.index + m[0].indexOf(m[1]); }
+      // ayah number: "আয়াত ১৫" or "১৫ নম্বর আয়াত" (but not the surah's own number in "সূরা ১৮ আয়াত ১০")
+      var re = new RegExp('(\\d{1,3})\\s*' + NUMW + '\\s*আয়াত', 'g'), mm;
+      while ((mm = re.exec(t))) { if (mm.index !== sAt) { a = +mm[1]; break; } }
+      if (!a && (m = t.match(new RegExp('আয়াত\\s*' + NUMW + '\\s*(\\d{1,3})'))) && m.index + m[0].indexOf(m[1]) !== sAt) a = +m[1];
+      if (!s) s = surahByName(t);
+      // two numbers and only one known: the other one is the surah
+      if (!s && a) { var nums = (t.match(/\d{1,3}/g) || []).map(Number); var rest = nums.filter(function (x) { return x !== a; }); if (rest.length === 1) s = rest[0]; }
     }
     if (s < 1 || s > 114) return null;
     if (a > 0) return a > COUNTS[s - 1] ? null : { kind: 'ayah', surah: s, ayah: a };
@@ -303,9 +347,9 @@
         (showBis ? '<div class="nld-bis nld-ar" dir="rtl"></div>' : '') +
         '<div class="nld-verses" style="--nldf:' + settings.font + 'px">' + verses.map(function (x) {
           var sajda = meta[7] && meta[7].indexOf(x.a) >= 0;
-          return '<div class="nld-v" id="nld-v-' + x.a + '" data-a="' + x.a + '"><div class="nld-vtop"><span class="nld-num">' + bn(n) + ':' + bn(x.a) + '</span>' + (sajda ? '<span class="nld-sajda">۩ সিজদার আয়াত</span>' : '') +
+          return '<div class="nld-v" id="nld-v-' + x.a + '" data-a="' + x.a + '" data-s="' + n + '"><div class="nld-vtop"><span class="nld-num">' + bn(n) + ':' + bn(x.a) + '</span>' + (sajda ? '<span class="nld-sajda">۩ সিজদার আয়াত</span>' : '') +
             '<button data-act="play" title="এই আয়াত শুনুন">▶</button><button data-act="from" title="এখান থেকে শেষ পর্যন্ত">⏩</button><button data-act="words" title="শব্দে শব্দে">🔤</button><button data-act="meaning" title="বাংলা অর্থ শুনুন">🗣️</button><button data-act="copy" title="কপি">📋</button></div>' +
-            '<div class="nld-arv nld-ar" dir="rtl" lang="ar">' + esc(x.ar) + ' <span class="nld-end">﴿' + arNum(x.a) + '﴾</span></div>' +
+            '<div class="nld-arv nld-ar" dir="rtl" lang="ar">' + words(x.ar) + ' <span class="nld-end">﴿' + arNum(x.a) + '﴾</span></div>' +
             (settings.showTr ? '<div class="nld-bnv" data-nt="1">' + esc(x.bn) + '</div>' : '') + '<div class="nld-words"></div></div>';
         }).join('') + '</div><p class="nld-src">আরবি: Tanzil উসমানি (হাফস) · বাংলা অর্থ: ' + esc((TRANSLATIONS.filter(function (t) { return t.id === settings.tr; })[0] || {}).name) + ' · অডিও: everyayah.com</p>';
       bindControls(v);
@@ -347,6 +391,15 @@
       if (focusAyah) setTimeout(function () { focus(focusAyah, autoplay); }, 60);
       else if (autoplay) playQueue(list, 0);
     }).catch(function (e) { fail(v, e); });
+  }
+  /** Arabic text as word spans (numbered like quran.com words; pause marks and signs are not words). */
+  function words(ar) {
+    var n = 0;
+    return String(ar).split(' ').map(function (tok) {
+      if (!/[\u0621-\u064A\u066E-\u06D3\u06FA-\u06FF]/.test(tok)) return esc(tok);
+      n++;
+      return '<span class="nld-tok" data-w="' + n + '">' + esc(tok) + '</span>';
+    }).join(' ');
   }
   function arNum(n) { return String(n).replace(/\d/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'[d]; }); }
 
@@ -682,12 +735,24 @@
   function tzOf(d) { return -d.getTimezoneOffset() / 60; }
   function dayTimes(d, c) { return window.NexoraPrayer ? NexoraPrayer.times(d, c.lat, c.lng, tzOf(d), c) : null; }
   function hm(h) { return window.NexoraPrayer ? NexoraPrayer.fmt(h, true) : ''; }
+  var HMONTHS = ['মুহাররম', 'সফর', 'রবিউল আউয়াল', 'রবিউস সানি', 'জমাদিউল আউয়াল', 'জমাদিউস সানি', 'রজব', 'শাবান', 'রমজান', 'শাওয়াল', 'জিলকদ', 'জিলহজ'];
   function hijri(d) {
     try {
-      var p = new Intl.DateTimeFormat('bn-BD-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(d);
-      var g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value || ''; };
-      return g('day') + ' ' + g('month') + ' ' + g('year') + ' হিজরি';
+      var p = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', { day: 'numeric', month: 'numeric', year: 'numeric' }).formatToParts(d);
+      var g = function (t) { return parseInt((p.filter(function (x) { return x.type === t; })[0] || {}).value, 10); };
+      var m = g('month');
+      if (!(m >= 1 && m <= 12)) return '';
+      return bn(g('day')) + ' ' + HMONTHS[m - 1] + ' ' + bn(g('year')) + ' হিজরি';
     } catch (e) { return ''; }
+  }
+  /** "রাজশাহী, রাজশাহী বিভাগ, বাংলাদেশ" from coordinates (BigDataCloud, free, no key); nearest big city if offline. */
+  function placeName(lat, lng) {
+    var near = CITIES.map(function (x) { return [x[0], Math.pow(x[1] - lat, 2) + Math.pow(x[2] - lng, 2)]; }).sort(function (a, b) { return a[1] - b[1]; })[0];
+    var guess = near && near[1] < 0.6 ? near[0] + ' (কাছাকাছি)' : 'আমার লোকেশন';
+    return fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=bn').then(function (r) { return r.json(); }).then(function (j) {
+      var parts = [j.city || j.locality, j.principalSubdivision, j.countryName].filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+      return parts.length ? parts.join(', ') : guess;
+    }).catch(function () { return guess; });
   }
   function nextPrayer(c) {
     var now = new Date();
@@ -723,6 +788,7 @@
   function viewNamaz(v) {
     if (!window.NexoraPrayer) { v.innerHTML = '<div class="nld-load">লোড হচ্ছে…</div>'; setTimeout(function () { if (state.tab === 'namaz') viewNamaz(v); }, 600); return; }
     var c = pcfg(), now = new Date(), t = dayTimes(now, c);
+    if (/^আমার লোকেশন/.test(c.city) && !viewNamaz._named) { viewNamaz._named = 1; placeName(c.lat, c.lng).then(function (name) { if (name !== c.city) { c.city = name; savePcfg(c); if (state.tab === 'namaz') viewNamaz(v); } }); }
     var isApp = !!(window.NexoraLifeNative && window.NexoraLifeNative.azanConfig);
     var ends = { fajr: t.sunrise, dhuhr: t.asr, asr: t.maghrib, maghrib: t.isha, isha: t.fajr };
     var anyOn = FIVE.some(function (p) { return c.on[p]; });
@@ -773,6 +839,7 @@
       locWaiter = function (lat, lng) {
         if (lat == null) { b.textContent = '📡 লোকেশন পাওয়া যায়নি — নিচে শহর বেছে নিন'; return; }
         c.city = 'আমার লোকেশন'; c.lat = lat; c.lng = lng; savePcfg(c); viewNamaz(v);
+        placeName(lat, lng).then(function (name) { c.city = name; savePcfg(c); if (state.tab === 'namaz') viewNamaz(v); });
       };
       var N = window.NexoraLifeNative;
       if (N && N.askLocation) N.askLocation();
@@ -823,8 +890,12 @@
   }
 
   /* ------------------------------------------------------------ run a parsed command */
+  var lastRun = { k: '', t: 0 };
   function run(c) {
     if (!c) return false;
+    var k = JSON.stringify(c);
+    if (k === lastRun.k && Date.now() - lastRun.t < 4000) return true; // the page and the app both pass the same command
+    lastRun = { k: k, t: Date.now() };
     show();
     if (c.kind === 'ayah') open('quran', { surah: c.surah, ayah: c.ayah, play: true });
     else if (c.kind === 'surah') open('quran', { surah: c.surah, play: true });
@@ -896,6 +967,7 @@
   };
 
   function boot() {
+    surahs().catch(function () {}); // English surah names for the agent
     playerBar();
     addNav();
     new MutationObserver(function () { addNav(); if (location.hash === '#deen' && $('#nlo-view') && !$('#nlo-view').contains(root || document.createElement('i'))) show(); }).observe(document.body, { childList: true, subtree: true });
@@ -905,5 +977,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
-  window.NexoraDeen = { parse: parseCommand, run: run, show: show, open: function (t, a) { show(); open(t, a); }, stop: stopAll, setSpeed: setSpeed, onLocation: function (lat, lng) { locWaiter(lat, lng); } };
+  window.NexoraDeen = { _setSurahs: function (j) { SURAHS = j; LATIN = null; }, parse: parseCommand, run: run, show: show, open: function (t, a) { show(); open(t, a); }, stop: stopAll, setSpeed: setSpeed, onLocation: function (lat, lng) { locWaiter(lat, lng); } };
 })();
