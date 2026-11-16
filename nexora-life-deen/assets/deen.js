@@ -320,12 +320,15 @@
   var root = null, view = null, state = { tab: 'home' };
 
   function panel() {
+    applyArFont();
     // data-nt: the hub machine-translates Bangla text when its language is not Bangla; Quran, hadith and lessons stay as written
-    root = el('<div class="nld"><div class="nld-tabs">' +
+    root = el('<div class="nld"><div class="nld-sticky"><div class="nld-tabs">' +
       [['home', '🏠', 'হোম'], ['namaz', '🕌', 'নামাজ'], ['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদিস'], ['learn', '🎓', 'শিখুন'], ['quiz', '❓', 'কুইজ'], ['settings', '⚙️', 'সেটিংস']].map(function (t) {
         return '<button data-dt="' + t[0] + '"><span>' + t[1] + '</span>' + t[2] + '</button>';
-      }).join('') + '</div><form class="nld-ask"><input placeholder="যেমন: ২ নম্বর সূরার ২৫৫ নম্বর আয়াত, সূরা ইয়াসিন, বুখারী ১" aria-label="কী শুনতে চান"><button>খুঁজুন</button></form><div class="nld-view"></div></div>');
+      }).join('') + '</div><form class="nld-ask"><input placeholder="যেমন: ২ নম্বর সূরার ২৫৫ নম্বর আয়াত, সূরা ইয়াসিন, বুখারী ১" aria-label="কী শুনতে চান"><button>খুঁজুন</button></form></div><div class="nld-view"></div></div>');
     view = $('.nld-view', root);
+    // keep the tabs + search (and a surah's title bar) pinned while scrolling
+    try { var stk = $('.nld-sticky', root); var setH = function () { root.style.setProperty('--nld-stick', stk.offsetHeight + 'px'); }; if (window.ResizeObserver) new ResizeObserver(setH).observe(stk); setTimeout(setH, 50); } catch (e) {}
     $$('[data-dt]', root).forEach(function (b) { b.onclick = function () { open(b.getAttribute('data-dt')); }; });
     $('.nld-ask', root).onsubmit = function (e) {
       e.preventDefault();
@@ -1210,14 +1213,27 @@
   }
 
   /* ------------------------------------------------------------ Settings */
+  // Arabic fonts to choose from (Google Fonts); the choice is saved and used everywhere
+  var AR_FONTS = [['Amiri Quran', 'আমিরি কুরআন (উসমানি)'], ['Scheherazade New', 'শাহরাজাদ (পরিষ্কার নাসখ)'], ['Noto Naskh Arabic', 'নোটো নাসখ'], ['Amiri', 'আমিরি'], ['Lateef', 'লতিফ (উপমহাদেশীয় ধাঁচ)'], ['Harmattan', 'হারমাত্তান (বড় ও স্পষ্ট)'], ['Noto Kufi Arabic', 'নোটো কুফি (আধুনিক)'], ['Reem Kufi', 'রিম কুফি']];
+  function applyArFont() {
+    var f = settings.arFont || 'Amiri Quran';
+    if (f !== 'Amiri Quran' && !document.getElementById('nld-arf-' + f.replace(/\s/g, ''))) {
+      var l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'nld-arf-' + f.replace(/\s/g, '');
+      l.href = 'https://fonts.googleapis.com/css2?family=' + f.replace(/ /g, '+') + ':wght@400;700&display=swap'; document.head.appendChild(l);
+    }
+    document.documentElement.style.setProperty('--nld-arfont', '"' + f + '"');
+  }
   function viewSettings(v) {
     v.innerHTML = '<div class="nld-set"><label>বাংলা অর্থ (অনুবাদ) <select class="nld-tr">' + TRANSLATIONS.map(function (t) { return '<option value="' + t.id + '"' + (t.id === settings.tr ? ' selected' : '') + '>' + t.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>আরবি ফন্ট <select class="nld-arf">' + AR_FONTS.map(function (f) { return '<option value="' + f[0] + '"' + (f[0] === (settings.arFont || 'Amiri Quran') ? ' selected' : '') + '>' + f[1] + '</option>'; }).join('') + '</select></label>' +
+      '<div class="nld-arfprev nld-ar" dir="rtl">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>' +
       '<label>আরবি লেখার আকার <input type="range" min="20" max="48" value="' + settings.font + '" class="nld-font"> <span class="nld-ar nld-fprev" style="font-size:' + settings.font + 'px">ٱلْحَمْدُ لِلَّهِ</span></label>' +
       '<label class="nld-chk"><input type="checkbox" class="nld-st"' + (settings.showTr ? ' checked' : '') + '> আয়াতের নিচে বাংলা অর্থ দেখাও</label></div>' + controls() +
       '<p class="nld-src">কুরআনের লেখা ও অনুবাদ সরাসরি নির্ভরযোগ্য উৎস থেকে আসে (Tanzil উসমানি হাফস, বাদশাহ ফাহদ কুরআন কমপ্লেক্সের বাংলা অনুবাদ, মুহিউদ্দীন খানের অনুবাদ)। এখানে কিছু হাতে টাইপ করা হয়নি। একবার খোলা সূরা ফোনে জমা থাকে, পরের বার দ্রুত খোলে।</p><button class="nld-clear">জমা রাখা সূরা মুছে নতুন করে আনো</button>';
     bindControls(v);
     $('.nld-tr', v).onchange = function () { settings.tr = this.value; settings.trPicked = true; saveSettings(); };
     $('.nld-font', v).oninput = function () { settings.font = +this.value; saveSettings(); $('.nld-fprev', v).style.fontSize = this.value + 'px'; };
+    $('.nld-arf', v).onchange = function () { settings.arFont = this.value; saveSettings(); applyArFont(); };
     $('.nld-st', v).onchange = function () { settings.showTr = this.checked; saveSettings(); };
     $('.nld-clear', v).onclick = function () { try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('nld_c_') === 0) localStorage.removeItem(k); }); } catch (e) {} for (var k in MEM) delete MEM[k]; this.textContent = '✓ মুছে ফেলা হয়েছে'; };
   }
