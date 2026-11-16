@@ -698,37 +698,67 @@
     return null;
   }
   var tick = null;
+  var PICON = { fajr: '🌄', sunrise: '🌅', dhuhr: '☀️', asr: '🌤️', maghrib: '🌇', isha: '🌙' };
+  function left(ms) {
+    var m = Math.max(0, Math.round(ms / 60000)), H = Math.floor(m / 60), M = m % 60;
+    return (H ? bn(H) + ' ঘণ্টা ' : '') + bn(M) + ' মিনিট';
+  }
+  /** The prayer whose time is running now (with when it ends), and the next one. */
+  function waqtNow(c) {
+    var now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var y = new Date(today.getTime() - 864e5), tt = dayTimes(today, c), ty = dayTimes(y, c), tn = dayTimes(new Date(today.getTime() + 864e5), c);
+    var D = function (d, h) { return NexoraPrayer.toDate(d, h); };
+    var spans = [
+      ['isha', D(y, ty.isha), D(today, tt.fajr)],
+      ['fajr', D(today, tt.fajr), D(today, tt.sunrise)],
+      ['dhuhr', D(today, tt.dhuhr), D(today, tt.asr)],
+      ['asr', D(today, tt.asr), D(today, tt.maghrib)],
+      ['maghrib', D(today, tt.maghrib), D(today, tt.isha)],
+      ['isha', D(today, tt.isha), D(new Date(today.getTime() + 864e5), tn.fajr)]
+    ];
+    var cur = spans.filter(function (s) { return now >= s[1] && now < s[2]; })[0] || null;
+    var nx = nextPrayer(c);
+    return { cur: cur, next: nx, now: now };
+  }
   function viewNamaz(v) {
     if (!window.NexoraPrayer) { v.innerHTML = '<div class="nld-load">লোড হচ্ছে…</div>'; setTimeout(function () { if (state.tab === 'namaz') viewNamaz(v); }, 600); return; }
     var c = pcfg(), now = new Date(), t = dayTimes(now, c);
     var isApp = !!(window.NexoraLifeNative && window.NexoraLifeNative.azanConfig);
-    var ranges = { fajr: [t.fajr, t.sunrise], dhuhr: [t.dhuhr, t.asr], asr: [t.asr, t.maghrib], maghrib: [t.maghrib, t.isha], isha: [t.isha, t.midnight] };
-    v.innerHTML = '<div class="nld-nhead"><div><b>📍 ' + esc(c.city) + '</b> <button class="nld-loc">বদলান</button><br><small>' + now.toLocaleDateString('bn-BD', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + (hijri(now) ? ' · ' + hijri(now) + ' (আনুমানিক)' : '') + '</small></div><div class="nld-next"></div></div>' +
-      '<div class="nld-locbox" hidden><button class="nld-gps">📡 আমার বর্তমান লোকেশন</button><div class="nld-cities">' + CITIES.map(function (x, i) { return '<button data-ci="' + i + '">' + x[0] + '</button>'; }).join('') + '</div></div>' +
+    var ends = { fajr: t.sunrise, dhuhr: t.asr, asr: t.maghrib, maghrib: t.isha, isha: t.fajr };
+    var anyOn = FIVE.some(function (p) { return c.on[p]; });
+    v.innerHTML =
+      '<div class="nld-hero"><div class="nld-hero-top"><button class="nld-loc">📍 ' + esc(c.city) + ' <span>▾ বদলান</span></button>' +
+      '<div class="nld-date">' + now.toLocaleDateString('bn-BD', { weekday: 'long', day: 'numeric', month: 'long' }) + (hijri(now) ? '<br>' + hijri(now) : '') + '</div></div>' +
+      '<div class="nld-hero-main"></div></div>' +
+      '<div class="nld-locbox" hidden><button class="nld-gps">📡 আমার বর্তমান লোকেশন ব্যবহার করুন</button><p>অথবা শহর বেছে নিন:</p><div class="nld-cities">' + CITIES.map(function (x, i) { return '<button data-ci="' + i + '">' + x[0] + '</button>'; }).join('') + '</div></div>' +
+      '<div class="nld-sec-title"><b>আজকের নামাজের সময়</b><button class="nld-alloff">' + (anyOn ? '🔕 সব আযান বন্ধ' : '🔔 সব ওয়াক্তে আযান') + '</button></div>' +
       '<div class="nld-ptimes">' + FIVE.map(function (p) {
-        var on = !!c.on[p];
-        return '<div class="nld-pt" data-p="' + p + '"><div><b>' + PNAMES[p] + '</b><small>শেষ: ' + hm(ranges[p][1]) + '</small></div><span class="nld-ptime">' + hm(t[p]) + '</span><button class="nld-bell' + (on ? ' on' : '') + '" data-bell="' + p + '" title="আযান অ্যালার্ম">' + (on ? '🔔' : '🔕') + '</button></div>';
+        return '<div class="nld-pt" data-p="' + p + '"><span class="nld-pic">' + PICON[p] + '</span><div class="nld-pname"><b>' + PNAMES[p] + '</b><small>শেষ ' + hm(ends[p]) + '</small></div><span class="nld-ptime">' + hm(t[p]) + '</span>' +
+          '<label class="nld-sw" title="আযান অ্যালার্ম"><input type="checkbox" data-bell="' + p + '"' + (c.on[p] ? ' checked' : '') + '><span></span><em>আযান</em></label></div>';
       }).join('') + '</div>' +
-      '<div class="nld-extra"><div>🌅 সূর্যোদয় <b>' + hm(t.sunrise) + '</b></div><div>🍽️ সেহরির শেষ <b>' + hm(t.fajr) + '</b></div><div>🌇 ইফতার <b>' + hm(t.maghrib) + '</b></div><div>🌙 তাহাজ্জুদ (রাতের শেষ তৃতীয়াংশ) <b>' + hm(t.lastThird) + '</b></div></div>' +
-      '<div class="nld-forbid"><b>⛔ নামাজ নিষিদ্ধ সময় (আনুমানিক)</b><div>সূর্যোদয়: ' + hm(t.sunrise) + ' – ' + hm(t.sunrise + 15 / 60) + '</div><div>ঠিক দুপুর (যাওয়াল): ' + hm(t.dhuhr - 6 / 60) + ' – ' + hm(t.dhuhr) + '</div><div>সূর্যাস্ত: ' + hm(t.maghrib - 15 / 60) + ' – ' + hm(t.maghrib) + '</div></div>' +
-      '<div class="nld-azanbar"><button class="nld-alloff">' + (FIVE.some(function (p) { return c.on[p]; }) ? '🔕 সব আযান বন্ধ' : '🔔 সব ওয়াক্তে আযান চালু') + '</button><button class="nld-test">▶ আযান শুনে দেখুন</button></div>' +
-      '<p class="nld-hint">' + (isApp ? 'আযান অ্যালার্ম ফোনে সেট হয়, অ্যাপ বন্ধ থাকলেও ওয়াক্ত হলে পুরো স্ক্রিনে আযান বাজবে।' : 'ওয়েবে আযান বাজে শুধু এই পেজ খোলা থাকলে। অ্যাপে অ্যালার্ম ফোনে সেট হয়।') + ' সময় বের করা হয় সূর্যের অবস্থান থেকে (' + esc((NexoraPrayer.METHODS[c.method] || {}).name || '') + ', আসর ' + (c.asr === 'shafi' ? 'শাফেয়ী' : 'হানাফী') + ')। আপনার মসজিদের জামাতের সময়ের সাথে মিলিয়ে নিন; দরকার হলে নিচে মিনিট কম-বেশি করুন।</p>' +
-      '<details class="nld-pset"><summary>⚙️ হিসাবের নিয়ম ও মিনিট সমন্বয়</summary><label>পদ্ধতি <select class="nld-meth">' + Object.keys(NexoraPrayer.METHODS).map(function (k) { return '<option value="' + k + '"' + (k === c.method ? ' selected' : '') + '>' + NexoraPrayer.METHODS[k].name + '</option>'; }).join('') + '</select></label>' +
+      '<button class="nld-test">▶ আযান শুনে দেখুন</button>' +
+      '<p class="nld-note">' + (isApp ? '🔔 সুইচ চালু করলে সেই ওয়াক্তে ফোনে আযান বাজবে — অ্যাপ বন্ধ থাকলেও।' : '🔔 ওয়েবে আযান বাজে শুধু এই পেজ খোলা থাকলে; ফোনের অ্যাপে অ্যাপ বন্ধ থাকলেও বাজে।') + '</p>' +
+      '<div class="nld-sec-title"><b>আজকের অন্যান্য সময়</b></div>' +
+      '<div class="nld-extra"><div><span>🌅</span><small>সূর্যোদয়</small><b>' + hm(t.sunrise) + '</b></div><div><span>🍽️</span><small>সেহরির শেষ</small><b>' + hm(t.fajr) + '</b></div><div><span>🌇</span><small>ইফতার</small><b>' + hm(t.maghrib) + '</b></div><div><span>🌙</span><small>তাহাজ্জুদ শুরু</small><b>' + hm(t.lastThird) + '</b></div></div>' +
+      '<div class="nld-forbid"><b>⛔ এই সময়ে নামাজ পড়া নিষেধ</b><div><span>সূর্যোদয়ের সময়</span><b>' + hm(t.sunrise) + ' – ' + hm(t.sunrise + 15 / 60) + '</b></div><div><span>ঠিক দুপুর</span><b>' + hm(t.dhuhr - 6 / 60) + ' – ' + hm(t.dhuhr) + '</b></div><div><span>সূর্যাস্তের সময়</span><b>' + hm(t.maghrib - 15 / 60) + ' – ' + hm(t.maghrib) + '</b></div></div>' +
+      '<details class="nld-pset nld-mwrap"><summary>📅 এই মাসের সময়সূচি</summary><div class="nld-month"></div></details>' +
+      '<details class="nld-pset"><summary>⚙️ হিসাবের নিয়ম ও মিনিট সমন্বয়</summary><p class="nld-note">সময় বের হয় সূর্যের অবস্থান থেকে। আপনার মসজিদের সাথে মিলিয়ে নিন; দরকার হলে মিনিট কম-বেশি করুন।</p><label>পদ্ধতি <select class="nld-meth">' + Object.keys(NexoraPrayer.METHODS).map(function (k) { return '<option value="' + k + '"' + (k === c.method ? ' selected' : '') + '>' + NexoraPrayer.METHODS[k].name + '</option>'; }).join('') + '</select></label>' +
       '<label>আসর <select class="nld-asr"><option value="hanafi"' + (c.asr !== 'shafi' ? ' selected' : '') + '>হানাফী (বাংলাদেশে প্রচলিত)</option><option value="shafi"' + (c.asr === 'shafi' ? ' selected' : '') + '>শাফেয়ী/অন্যান্য</option></select></label>' +
       '<div class="nld-offs">' + ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'].map(function (p) { return '<label>' + PNAMES[p] + ' <input type="number" step="1" min="-30" max="30" data-off="' + p + '" value="' + (c.offsets[p] || 0) + '"> মিনিট</label>'; }).join('') + '</div></details>' +
-      '<h4>📅 এই মাসের সময়সূচি</h4><div class="nld-month"></div><p class="nld-src">' + AZAN_CREDIT + '</p>';
+      '<p class="nld-src">' + AZAN_CREDIT + '</p>';
 
-    // countdown
-    function paintNext() {
-      var n = nextPrayer(c), box = $('.nld-next', v);
-      if (!n || !box || !document.body.contains(box)) { clearInterval(tick); return; }
-      var s = Math.max(0, Math.round((n.at - new Date()) / 1000)), H = Math.floor(s / 3600), M = Math.floor(s % 3600 / 60), S = s % 60;
-      box.innerHTML = '<small>পরের ওয়াক্ত</small><b>' + PNAMES[n.p] + '</b><span>' + bn(H) + ' ঘণ্টা ' + bn(M) + ' মিনিট ' + bn(S) + ' সে.</span>';
-      $$('.nld-pt', v).forEach(function (r) { r.classList.toggle('next', r.getAttribute('data-p') === n.p); });
+    function paintHero() {
+      var box = $('.nld-hero-main', v);
+      if (!box || !document.body.contains(box)) { clearInterval(tick); return; }
+      var w = waqtNow(c), html = '';
+      if (w.cur) html += '<div class="nld-cur"><small>এখন চলছে</small><b>' + PICON[w.cur[0]] + ' ' + PNAMES[w.cur[0]] + '</b><span>শেষ হবে ' + hm(w.cur[2].getHours() + w.cur[2].getMinutes() / 60) + ' · আর ' + left(w.cur[2] - w.now) + ' বাকি</span></div>';
+      else html += '<div class="nld-cur"><small>এখন</small><b>কোনো ফরজ নামাজের ওয়াক্ত নেই</b><span>সূর্যোদয়ের পর থেকে যোহর পর্যন্ত</span></div>';
+      if (w.next) html += '<div class="nld-nx"><small>পরের নামাজ</small><b>' + PNAMES[w.next.p] + ' · ' + hm(w.next.at.getHours() + w.next.at.getMinutes() / 60) + '</b><span>' + left(w.next.at - w.now) + ' পর</span></div>';
+      box.innerHTML = html;
+      $$('.nld-pt', v).forEach(function (r) { var p = r.getAttribute('data-p'); r.classList.toggle('now', !!(w.cur && w.cur[0] === p)); r.classList.toggle('next', !!(w.next && w.next.p === p)); });
     }
-    clearInterval(tick); paintNext(); tick = setInterval(paintNext, 1000);
+    clearInterval(tick); paintHero(); tick = setInterval(paintHero, 20000);
 
-    // month table
     var y = now.getFullYear(), mo = now.getMonth(), days = new Date(y, mo + 1, 0).getDate(), rows = '';
     for (var d = 1; d <= days; d++) {
       var dd = new Date(y, mo, d), tt = dayTimes(dd, c);
@@ -741,15 +771,15 @@
     $('.nld-gps', v).onclick = function () {
       var b = this; b.textContent = '📡 লোকেশন নেওয়া হচ্ছে…';
       locWaiter = function (lat, lng) {
-        if (lat == null) { b.textContent = '📡 লোকেশন পাওয়া যায়নি — শহর বেছে নিন'; return; }
-        c.city = 'আমার লোকেশন (' + bn(lat.toFixed(2)) + ', ' + bn(lng.toFixed(2)) + ')'; c.lat = lat; c.lng = lng; savePcfg(c); viewNamaz(v);
+        if (lat == null) { b.textContent = '📡 লোকেশন পাওয়া যায়নি — নিচে শহর বেছে নিন'; return; }
+        c.city = 'আমার লোকেশন'; c.lat = lat; c.lng = lng; savePcfg(c); viewNamaz(v);
       };
       var N = window.NexoraLifeNative;
       if (N && N.askLocation) N.askLocation();
       else if (navigator.geolocation) navigator.geolocation.getCurrentPosition(function (p) { locWaiter(p.coords.latitude, p.coords.longitude); }, function () { locWaiter(null); }, { timeout: 15000, maximumAge: 3600000 });
       else locWaiter(null);
     };
-    $$('[data-bell]', v).forEach(function (b) { b.onclick = function () { var p = b.getAttribute('data-bell'); c.on[p] = !c.on[p]; savePcfg(c); viewNamaz(v); }; });
+    $$('[data-bell]', v).forEach(function (b) { b.onchange = function () { c.on[b.getAttribute('data-bell')] = b.checked; savePcfg(c); $('.nld-alloff', v).textContent = FIVE.some(function (p) { return c.on[p]; }) ? '🔕 সব আযান বন্ধ' : '🔔 সব ওয়াক্তে আযান'; }; });
     $('.nld-alloff', v).onclick = function () { var any = FIVE.some(function (p) { return c.on[p]; }); FIVE.forEach(function (p) { c.on[p] = !any; }); savePcfg(c); viewNamaz(v); };
     $('.nld-test', v).onclick = function () {
       var N = window.NexoraLifeNative;
@@ -758,7 +788,7 @@
     };
     $('.nld-meth', v).onchange = function () { c.method = this.value; savePcfg(c); viewNamaz(v); };
     $('.nld-asr', v).onchange = function () { c.asr = this.value; savePcfg(c); viewNamaz(v); };
-    $$('[data-off]', v).forEach(function (i) { i.onchange = function () { c.offsets[i.getAttribute('data-off')] = +en(i.value) || 0; savePcfg(c); viewNamaz(v); $('.nld-pset', v).open = true; }; });
+    $$('[data-off]', v).forEach(function (i) { i.onchange = function () { c.offsets[i.getAttribute('data-off')] = +en(i.value) || 0; savePcfg(c); viewNamaz(v); var ps = $$('.nld-pset', v); ps[ps.length - 1].open = true; }; });
   }
   var locWaiter = function () {};
 
