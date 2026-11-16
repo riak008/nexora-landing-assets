@@ -709,7 +709,64 @@
   }
   var toasted = {};
   function toastOnce(msg) { if (toasted[msg]) return; toasted[msg] = 1; var t = el('<div class="nld-toast">' + esc(msg) + '</div>'); document.body.appendChild(t); setTimeout(function () { t.remove(); }, 6000); }
-  // Plays steps one after another: {bn}, {ar}, {url}, {cell} to highlight
+
+  /* ------------------------------------------------------------ real qari voice for the Qaida (no computer voice for Arabic)
+     Every letter / harakat sound is taken from a real Quran word recited by a qari (quran.com word-by-word audio,
+     Juz Amma + Al-Fatiha): the first word that contains that exact letter with that exact mark. */
+  var QIDX = null, QIDX_P = null;
+  function normCl(c) {
+    var base = c.charAt(0).replace('ٱ', 'ا'), m = c.slice(1)
+      .replace(/ࣰ/g, 'ً').replace(/ࣱ/g, 'ٌ').replace(/ࣲ/g, 'ٍ').replace(/ۡ/g, 'ْ')
+      .replace(/[^ً-ْ]/g, '');
+    return base + m.split('').sort().join('');
+  }
+  function normWord(ar) {
+    var out = [];
+    clusters(ar).forEach(function (c) {
+      var dagger = /ٰ/.test(c);
+      out.push(normCl(c.replace(/ٰ/g, 'َ')));
+      if (dagger) out.push('ا');                      // small (dagger) alif = a long "aa"
+    });
+    return out;
+  }
+  function qariIndex() {
+    if (QIDX) return Promise.resolve(QIDX);
+    if (QIDX_P) return QIDX_P;
+    var ch = [1]; for (var n = 78; n <= 114; n++) ch.push(n);
+    QIDX_P = Promise.all(ch.map(function (n) {
+      return getJSON(QCOM + 'verses/by_chapter/' + n + '?words=true&word_fields=text_uthmani&per_page=50&page=1', true).then(function (j) {
+        var list = [];
+        (j.verses || []).forEach(function (v) { (v.words || []).forEach(function (w) { if (w.char_type_name === 'word' && w.audio_url) list.push({ ar: w.text_uthmani || w.text, key: v.verse_key, audio: WBW + w.audio_url, n: normWord(w.text_uthmani || w.text) }); }); });
+        return list;
+      }).catch(function () { return []; });
+    })).then(function (all) { QIDX = [].concat.apply([], all); return QIDX; });
+    return QIDX_P;
+  }
+  /** The best real word for a syllable like "بَ", "بًا", "أَبْ", "بَا": it starts with it if possible, else contains it. */
+  function qariWord(target) {
+    var want = normWord(target).filter(function (x) { return x !== 'ا' || /ا$/.test(target); });
+    if (/ًا$/.test(target)) want = normWord(target.replace(/ا$/, ''));
+    return qariIndex().then(function (idx) {
+      var at = function (w) { for (var i = 0; i + want.length <= w.n.length; i++) { var ok = true; for (var k = 0; k < want.length; k++) if (w.n[i + k] !== want[k]) { ok = false; break; } if (ok) return i; } return -1; };
+      var best = null, bi = 99;
+      for (var i = 0; i < idx.length; i++) { var p = at(idx[i]); if (p >= 0 && p < bi) { best = idx[i]; bi = p; if (p === 0 && idx[i].n.length <= 4) break; } }
+      return best;
+    });
+  }
+  // the qari reading letter names: only these three stand alone in the Quran (Sad 38:1, Qaf 50:1, Nun 68:1)
+  var NAME_AUDIO = { 'ص': [38, 1, 1], 'ق': [50, 1, 1], 'ن': [68, 1, 1] };
+  function p3(x) { return ('00' + x).slice(-3); }
+  function qariStep(cell, target, gap, done) {
+    var note = function (w) { var nb = cell && cell.closest('.nld-qaida, .nld-linfo, .nld-spell'); var el2 = nb && nb.querySelector('.nld-qnote'); if (!el2 && nb) { el2 = document.createElement('div'); el2.className = 'nld-qnote'; nb.insertBefore(el2, nb.firstChild); } if (el2) el2.innerHTML = w ? '🎙️ ক্বারীর কণ্ঠে আসল শব্দ: <span class="nld-ar" data-nt="1">' + esc(w.ar) + '</span> <small>(' + bn(w.key) + ') — শব্দের যে অংশে <b class="nld-ar" data-nt="1">' + esc(target) + '</b> আছে সেটা খেয়াল করুন</small>' : '⚠️ এই উচ্চারণের জন্য ক্বারীর রেকর্ডিং পাওয়া যায়নি'; };
+    qariWord(target).then(function (w) {
+      note(w);
+      if (!w) return done();
+      playUrl(w.audio); player.playbackRate = Math.min(1, settings.speed);
+      var end = function () { player.removeEventListener('ended', end); player.removeEventListener('error', end); done(); };
+      player.addEventListener('ended', end); player.addEventListener('error', end);
+    });
+  }
+  // Plays steps one after another: {bn}, {qari}, {url}, {cell} to highlight
   var guideToken = null;
   function guide(steps) {
     stopAll(); var token = {}; guideToken = token; var i = 0;
@@ -720,6 +777,7 @@
       if (s.cell) { s.cell.classList.add('lit'); try { s.cell.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
       var after = function () { setTimeout(next, s.gap == null ? 500 : s.gap); };
       if (s.bn) speakBn(s.bn, after);
+      else if (s.qari) qariStep(s.cell, s.qari, s.gap, after);
       else if (s.ar) sayAr(s.ar, after);
       else if (s.url) { playUrl(s.url); var end = function () { player.removeEventListener('ended', end); after(); }; player.addEventListener('ended', end); }
       else after();
@@ -733,7 +791,7 @@
         var f = NOJOIN.indexOf(c) >= 0 ? [c, c, 'ـ' + c, 'ـ' + c] : [c, c + 'ـ', 'ـ' + c + 'ـ', 'ـ' + c];
         return '<button class="nld-cell" data-k="' + k + '"><b>' + x[1] + '</b><span class="nld-ar" dir="rtl">' + f.join('  ') + '</span></button>';
       }).join('') + '</div><p class="nld-hint">ক্রম: একা · শুরুতে · মাঝে · শেষে</p>';
-      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var k = +b.getAttribute('data-k'); guide([{ cell: b, ar: ARNAMES[k], gap: 0 }]); }; });
+      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var k = +b.getAttribute('data-k'); var L0 = LETTERS[k][0], na = NAME_AUDIO[L0]; guide(na ? [{ cell: b, url: WBW + 'wbw/' + p3(na[0]) + '_' + p3(na[1]) + '_' + p3(na[2]) + '.mp3', gap: 300 }, { bn: LETTERS[k][1] }] : [{ cell: b, bn: LETTERS[k][1], gap: 200 }, { cell: b, qari: (L0 === 'ء' ? 'أ' : L0 === 'ا' ? 'أَ' : L0), gap: 0 }]); }; });
     }
     if (l.muq) {
       box.innerHTML = '<div class="nld-muq">' + MUQ.map(function (m, i) { return '<button class="nld-cell" data-i="' + i + '"><span class="nld-ar">' + m[0] + '</span><small>' + m[1] + ' · সূরা ' + bn(m[2]) + '</small></button>'; }).join('') + '</div>';
@@ -745,12 +803,12 @@
         return '<div class="nld-drow" dir="rtl">' + r.map(function (c, ci) { return '<button class="nld-cell" data-r="' + ri + '" data-c="' + ci + '"><span class="nld-ar">' + c[0] + '</span><small>' + c[1] + '</small></button>'; }).join('') + '</div>';
       }).join('') + '</div>';
       var cellOf = function (ri, ci) { return $('.nld-cell[data-r="' + ri + '"][data-c="' + ci + '"]', box); };
-      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var c = rows[+b.getAttribute('data-r')][+b.getAttribute('data-c')]; guide([{ cell: b, ar: c[0], gap: 0 }]); }; });
+      $$('.nld-cell', box).forEach(function (b) { b.onclick = function () { var c = rows[+b.getAttribute('data-r')][+b.getAttribute('data-c')]; guide([{ cell: b, qari: c[0], gap: 0 }]); }; });
       $('.nld-gstop', box).onclick = function () { guideToken = null; stopAll(); };
       $('.nld-gplay', box).onclick = function () {
         var body = ($('.nld-lbody', v) || {}).innerText || ''; body = body.replace(/[؀-ۿࢠ-ࣿ]+/g, ' ');
         var steps = [{ bn: body, gap: 500 }, { bn: l.say, gap: 700 }];
-        rows.forEach(function (r, ri) { r.forEach(function (c, ci) { steps.push({ cell: cellOf(ri, ci), ar: c[0], gap: 900 }); }); });
+        rows.forEach(function (r, ri) { r.forEach(function (c, ci) { steps.push({ cell: cellOf(ri, ci), bn: c[1], gap: 150 }); steps.push({ cell: cellOf(ri, ci), qari: c[0], gap: 900 }); }); });
         guide(steps);
       };
     }
@@ -824,7 +882,7 @@
   function baseLetters(w) { return String(w).replace(/[ً-ٰٟۖ-ࣰۭ-ࣿـ]/g, '').replace(/[ٱأإآ]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و').replace(/ة/g, 'ه'); }
   function letterInfo(box, x) {
     box.innerHTML = '<div class="nld-lcard"><span class="nld-ar big">' + x[0] + '</span><div><b>' + x[1] + '</b> · ' + ZONES[x[2]] + (HEAVY.indexOf(x[0]) >= 0 ? ' · <i>মোটা হরফ</i>' : '') + (QALQALA.indexOf(x[0]) >= 0 ? ' · <i>ক্বলক্বলার হরফ</i>' : '') + '<p>' + x[3] + '</p><div class="nld-lex">কুরআনের শব্দ খোঁজা হচ্ছে…</div></div></div>';
-    var ki = LETTERS.indexOf(x); guide([{ ar: ARNAMES[ki], gap: 400 }, { ar: (x[0] === 'ء' ? 'أ' : x[0] === 'ا' ? 'أ' : x[0]) + 'َ ' + (x[0] === 'ا' || x[0] === 'ء' ? 'إ' : x[0]) + 'ِ ' + (x[0] === 'ا' || x[0] === 'ء' ? 'أ' : x[0]) + 'ُ', gap: 300 }, { bn: x[1] + '। ' + x[3] }]);
+    var na = NAME_AUDIO[x[0]], hz = x[0] === 'ا' || x[0] === 'ء'; guide((na ? [{ url: WBW + 'wbw/' + p3(na[0]) + '_' + p3(na[1]) + '_' + p3(na[2]) + '.mp3', gap: 300 }] : []).concat([{ bn: x[1] + '। ' + x[3], gap: 300 }, { cell: box.querySelector('.nld-lcard'), qari: (hz ? 'أ' : x[0]) + 'َ', gap: 500 }, { cell: box.querySelector('.nld-lcard'), qari: (hz ? 'إ' : x[0]) + 'ِ', gap: 500 }, { cell: box.querySelector('.nld-lcard'), qari: (hz ? 'أ' : x[0]) + 'ُ', gap: 0 }]));
     var target = x[0] === 'ء' ? null : x[0];
     var tries = LETTER_SOURCES.slice();
     (function next() {
@@ -869,14 +927,14 @@
       '<div class="nld-spell-row" dir="rtl">' + cls.map(function (c, i) { return '<button class="nld-cell" data-sp="' + i + '"><span class="nld-ar">' + esc(c) + '</span><small>' + (clusterBn(c, i > 0) || '·') + '</small></button>'; }).join('') + '</div>' +
       '<div class="nld-gbar"><button class="nld-gplay">🔤 হরফ ভেঙে ভেঙে শুনুন</button><button data-full="1">▶ পুরো শব্দ (ক্বারী)</button><button class="nld-gstop">⏹</button></div></div>';
     var cells = $$('[data-sp]', box);
-    cells.forEach(function (b) { b.onclick = function () { guide([{ cell: b, ar: cls[+b.getAttribute('data-sp')], gap: 0 }]); }; });
+    cells.forEach(function (b) { b.onclick = function () { var i = +b.getAttribute('data-sp'); guide([{ cell: b, bn: clusterBn(cls[i], i > 0) || ' ', gap: 0 }]); }; });
     $('[data-full]', box).onclick = function () { guide([{ url: w.audio }]); };
     $('.nld-gstop', box).onclick = function () { guideToken = null; stopAll(); };
     $('.nld-gplay', box).onclick = function () {
       var steps = [{ bn: 'হরফ ভেঙে ভেঙে পড়ি, শুনুন আর সাথে বলুন।', gap: 400 }];
-      cls.forEach(function (c, i) { if (clusterBn(c, i > 0) !== '') steps.push({ cell: cells[i], ar: c, gap: 700 }); });
+      cls.forEach(function (c, i) { var r = clusterBn(c, i > 0); if (r && r !== '—') steps.push({ cell: cells[i], bn: r, gap: 500 }); });
       steps.push({ bn: 'এবার পুরো শব্দ একসাথে।', gap: 300 });
-      if (w.audio) steps.push({ url: w.audio, gap: 600 }); else steps.push({ ar: w.ar });
+      if (w.audio) steps.push({ url: w.audio, gap: 600 });
       guide(steps);
     };
     try { box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
@@ -1386,5 +1444,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
-  window.NexoraDeen = { _setSurahs: function (j) { SURAHS = j; LATIN = null; }, parse: parseCommand, run: run, show: show, open: function (t, a) { show(); open(t, a); }, stop: stopAll, setSpeed: setSpeed, onLocation: function (lat, lng, acc) { locWaiter(lat, lng, acc); } };
+  window.NexoraDeen = { _qari: function (t) { return qariWord(t); }, _setSurahs: function (j) { SURAHS = j; LATIN = null; }, parse: parseCommand, run: run, show: show, open: function (t, a) { show(); open(t, a); }, stop: stopAll, setSpeed: setSpeed, onLocation: function (lat, lng, acc) { locWaiter(lat, lng, acc); } };
 })();
