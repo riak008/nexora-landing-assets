@@ -13,12 +13,61 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.4.5';
+	const VERSION = '1.4.6';
+
+	/**
+	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
+	 * fetched once from Google's TTS on the server, kept in uploads, then served as a plain mp3.
+	 */
+	public static function tts_route() {
+		register_rest_route(
+			'nexora-life/v1',
+			'/tts',
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => '__return_true',
+				'callback'            => array( __CLASS__, 'tts' ),
+			)
+		);
+	}
+
+	public static function tts( $req ) {
+		$tl = (string) $req->get_param( 'tl' );
+		$q  = trim( wp_strip_all_tags( (string) $req->get_param( 'q' ) ) );
+		if ( ! in_array( $tl, array( 'ar', 'bn', 'en' ), true ) || '' === $q || mb_strlen( $q ) > 200 ) {
+			return new WP_Error( 'bad', 'bad request', array( 'status' => 400 ) );
+		}
+		$up   = wp_upload_dir();
+		$dir  = trailingslashit( $up['basedir'] ) . 'nexora-tts';
+		$name = md5( $tl . '|' . $q ) . '.mp3';
+		$file = $dir . '/' . $name;
+		if ( ! file_exists( $file ) || filesize( $file ) < 200 ) {
+			wp_mkdir_p( $dir );
+			$res = wp_remote_get(
+				'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' . $tl . '&q=' . rawurlencode( $q ),
+				array(
+					'timeout'    => 15,
+					'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
+				)
+			);
+			$body = is_wp_error( $res ) ? '' : wp_remote_retrieve_body( $res );
+			if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) || strlen( $body ) < 200 ) {
+				return new WP_Error( 'tts', 'tts unavailable', array( 'status' => 502 ) );
+			}
+			file_put_contents( $file, $body ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		}
+		header( 'Content-Type: audio/mpeg' );
+		header( 'Cache-Control: public, max-age=31536000' );
+		header( 'Content-Length: ' . filesize( $file ) );
+		readfile( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		exit;
+	}
 
 	public static function init() {
 		add_action( 'admin_footer-toplevel_page_nexora-life', array( __CLASS__, 'print_ui' ) );
 		add_action( 'init', array( __CLASS__, 'app_buffer' ), 0 );
 		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'command' ), 8, 3 );
+		add_action( 'rest_api_init', array( __CLASS__, 'tts_route' ) );
 	}
 
 	/* ------------------------------------------------------------ UI */

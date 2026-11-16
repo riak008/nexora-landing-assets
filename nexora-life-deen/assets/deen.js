@@ -150,6 +150,7 @@
     player.playbackRate = settings.speed;
     return player.play().catch(function () {});
   }
+  var TTS_URL = location.origin + '/wp-json/nexora-life/v1/tts';
   var ttsAudio = new Audio(); ttsAudio.preload = 'auto';
   function chunks(text) {
     var out = [], parts = String(text).replace(/\s+/g, ' ').split(/(?<=[।.!?,;:—])\s+/);
@@ -164,7 +165,7 @@
       var t = list[i++]; if (!t) return done();
       ttsAudio.onended = function () { next(); };
       ttsAudio.onerror = function () { done(); };
-      ttsAudio.src = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' + lang + '&q=' + encodeURIComponent(t);
+      ttsAudio.src = TTS_URL + '?tl=' + lang + '&q=' + encodeURIComponent(t);
       ttsAudio.playbackRate = Math.max(0.5, Math.min(1.5, settings.speed));
       var pr = ttsAudio.play(); if (pr && pr.catch) pr.catch(function () { done(); });
     })();
