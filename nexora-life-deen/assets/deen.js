@@ -319,7 +319,22 @@
   /* ------------------------------------------------------------ shell */
   var root = null, view = null, state = { tab: 'home' };
 
+  // hub language switched: redraw at once (fresh Bangla text, which the hub then translates; meanings/hadith switch edition)
+  var lastLang = null;
+  function watchLang() {
+    var check = function () {
+      var l = uiLang();
+      if (lastLang === null) { lastLang = l; return; }
+      if (l === lastLang) return;
+      lastLang = l;
+      if (root && view && document.body.contains(root)) { try { open(state.tab, state.arg); } catch (e) {} }
+    };
+    setInterval(check, 600);
+    document.addEventListener('change', function () { setTimeout(check, 150); setTimeout(check, 900); }, true);
+    document.addEventListener('click', function () { setTimeout(check, 300); }, true);
+  }
   function panel() {
+    if (!watchLang._on) { watchLang._on = 1; watchLang(); }
     applyArFont();
     // data-nt: the hub machine-translates Bangla text when its language is not Bangla; Quran, hadith and lessons stay as written
     root = el('<div class="nld"><div class="nld-sticky"><div class="nld-tabs">' +
@@ -338,7 +353,7 @@
     return root;
   }
   function open(tab, arg) {
-    state.tab = tab;
+    state.tab = tab; state.arg = arg;
     $$('[data-dt]', root).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-dt') === tab); });
     view.innerHTML = '';
     ({ home: viewHome, namaz: viewNamaz, quran: viewQuran, hadith: viewHadith, learn: viewLearn, quiz: viewQuiz, settings: viewSettings }[tab] || viewQuran)(view, arg);
