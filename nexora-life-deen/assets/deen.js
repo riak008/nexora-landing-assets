@@ -141,6 +141,13 @@
     text = String(text || '').slice(0, 900);
     if (!text) return done();
     var N = window.NexoraLifeNative;
+    // App 1.0.x+: say() always speaks and speaking() tells when it finished
+    if (N && N.say && N.speaking) {
+      try { N.say(text); } catch (e) { return done(); }
+      var t0 = Date.now();
+      (function wait() { setTimeout(function () { var busy = false; try { busy = N.speaking(); } catch (e) {} if ((busy || Date.now() - t0 < 900) && Date.now() - t0 < 120000) wait(); else done(); }, 400); })();
+      return;
+    }
     if (N && N.speak) { try { N.speak(text); } catch (e) {} setTimeout(done, Math.min(60000, 1500 + text.length * 85)); return; }
     if (!window.speechSynthesis) return done();
     var u = new SpeechSynthesisUtterance(text);
@@ -176,9 +183,11 @@
     };
     if (settings.meaningVoice && it && it.bn) speakBn(it.bn, next); else next();
   });
-  player.addEventListener('play', updateBar);
-  player.addEventListener('pause', updateBar);
-  function stopAll() { queue = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); onAyah(null); updateBar(); }
+  // keep the phone screen on while a recitation is playing (app only)
+  player.addEventListener('play', function () { native('keepAwake', true); updateBar(); });
+  player.addEventListener('pause', function () { if (!queue) native('keepAwake', false); updateBar(); });
+  function native(fn, arg) { var N = window.NexoraLifeNative; try { if (N && N[fn]) N[fn](arg); } catch (e) {} }
+  function stopAll() { queue = null; slowToken = null; try { player.pause(); } catch (e) {} if (window.speechSynthesis) speechSynthesis.cancel(); native('stopSpeaking'); onAyah(null); updateBar(); }
   function setSpeed(v) { settings.speed = v; saveSettings(); player.playbackRate = v; $$('.nld-speed').forEach(function (s) { s.value = String(v); }); }
 
   var bar = null;
