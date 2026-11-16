@@ -682,7 +682,13 @@
   function tzOf(d) { return -d.getTimezoneOffset() / 60; }
   function dayTimes(d, c) { return window.NexoraPrayer ? NexoraPrayer.times(d, c.lat, c.lng, tzOf(d), c) : null; }
   function hm(h) { return window.NexoraPrayer ? NexoraPrayer.fmt(h, true) : ''; }
-  function hijri(d) { try { return new Intl.DateTimeFormat('bn-BD-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(d); } catch (e) { return ''; } }
+  function hijri(d) {
+    try {
+      var p = new Intl.DateTimeFormat('bn-BD-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(d);
+      var g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value || ''; };
+      return g('day') + ' ' + g('month') + ' ' + g('year') + ' হিজরি';
+    } catch (e) { return ''; }
+  }
   function nextPrayer(c) {
     var now = new Date();
     for (var k = 0; k < 2; k++) {
