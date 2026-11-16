@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Hind+Siliguri:wght@400;600;700&display=swap');
+.nld{--g:#0f766e;--g2:#14b8a6;--bg:#fff;--soft:#f0fdfa;--line:#d5ece8;--tx:#0f172a;--mu:#64748b;font-family:"Hind Siliguri","Plus Jakarta Sans",system-ui,sans-serif;color:var(--tx);max-width:980px;margin:0 auto;padding:4px 2px 90px}
+.nld *{box-sizing:border-box}
+.nld button{font:inherit;cursor:pointer}
+.nld .nld-ar{font-family:"Amiri Quran","KFGQPC Uthmanic Script HAFS","Scheherazade New","Traditional Arabic",serif;font-style:normal}
+.nld .big{font-size:42px}
+.nld-tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px;position:sticky;top:0;background:inherit;z-index:3}
+.nld-tabs button{flex:0 0 auto;display:flex;gap:6px;align-items:center;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:9px 16px;font-weight:600;color:var(--tx)}
+.nld-tabs button.on{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;border-color:transparent}
+.nld-ask{display:flex;gap:8px;margin:0 0 14px}
+.nld-ask input,.nld-filter,.nld input[type=number],.nld select{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;background:#fff;color:var(--tx);min-width:0}
+.nld-ask input{flex:1}
+.nld-ask button,.nld-pa,.nld-start,.nld-again,.nld-hnum button,.nld-done{border:0;border-radius:12px;padding:10px 16px;background:var(--g);color:#fff;font-weight:700}
+.nld-filter{width:100%;margin:0 0 10px}
+.nld-load,.nld-hint{color:var(--mu);font-size:14px;padding:6px 0}
+.nld-err{background:#fef2f2;color:#b91c1c;border-radius:12px;padding:12px}
+.nld-src{color:var(--mu);font-size:12px;margin-top:16px}
+.nld-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.nld-srow{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--line);background:#fff;border-radius:14px;padding:10px 12px;color:var(--tx)}
+.nld-srow:hover{border-color:var(--g2);background:var(--soft)}
+.nld-srow>b{width:38px;height:38px;flex:0 0 38px;display:grid;place-items:center;border-radius:10px;background:var(--soft);color:var(--g)}
+.nld-srow span{flex:1;display:flex;flex-direction:column;min-width:0}
+.nld-srow small{color:var(--mu);font-size:12px}
+.nld-srow i{font-size:20px;color:var(--g)}
+.nld-resume{width:100%;border:1px dashed var(--g2);background:var(--soft);border-radius:12px;padding:10px;margin:0 0 10px;color:var(--g);font-weight:700}
+.nld-shead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 8px}
+.nld-shead h3{margin:0;font-size:20px}
+.nld-shead small{color:var(--mu)}
+.nld-shead>div:nth-child(2){flex:1}
+.nld-back,.nld-nav2 button,.nld-stop,.nld-hnav button,.nld-lnav button,.nld-books button,.nld-lessons button,.nld-secs button,.nld-sayl,.nld-replay,.nld-clear,.nld-prhead button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;color:var(--tx)}
+.nld-playall{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.nld-playall input{width:90px}
+.nld-ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--soft);border-radius:14px;padding:10px 12px;margin:8px 0 12px;font-size:14px}
+.nld-ctl label{display:flex;gap:6px;align-items:center}
+.nld-chk input{width:18px;height:18px}
+.nld-bis{text-align:center;font-size:32px;color:var(--g);margin:10px 0}
+.nld-v{border-bottom:1px solid var(--line);padding:14px 6px;border-radius:12px;transition:background .3s}
+.nld-v.playing{background:#ecfdf5;box-shadow:inset 4px 0 0 var(--g2)}
+.nld-v.flash{background:#fef9c3}
+.nld-vtop{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.nld-vtop button{border:0;background:transparent;font-size:16px;padding:4px 7px;border-radius:8px}
+.nld-vtop button:hover{background:var(--soft)}
+.nld-num{font-weight:700;color:var(--g);background:var(--soft);border-radius:8px;padding:2px 8px;font-size:13px;margin-right:auto}
+.nld-sajda{font-size:12px;color:#b45309;background:#fef3c7;border-radius:8px;padding:2px 8px}
+.nld-arv{font-size:var(--nldf,30px);line-height:2.15;text-align:right;margin:8px 0;cursor:pointer;color:#0b3b36}
+.nld-end{color:var(--g);font-size:.8em}
+.nld-bnv{font-size:16px;line-height:1.75;color:#1e293b}
+.nld-wrow{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.nld-w{display:flex;flex-direction:column;align-items:center;border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;color:var(--tx);min-width:56px}
+.nld-w .nld-ar{font-size:26px;line-height:1.7}
+.nld-w small{font-size:11px;color:var(--mu)}
+.nld-w.playing,.nld-w:hover{border-color:var(--g2);background:#ecfdf5}
+.nld-books{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.nld-books button.on{background:var(--g);color:#fff;border-color:transparent}
+.nld-hnum{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.nld-hnum input{width:120px}
+.nld-secs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px}
+.nld-secs button{text-align:left}
+.nld-secs small{color:var(--mu)}
+.nld-h{border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 10px;background:#fff}
+.nld-hhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px}
+.nld-hhead small{color:var(--mu)}
+.nld-hhead button{margin-left:auto;border:0;background:var(--soft);border-radius:8px;padding:4px 8px}
+.nld-har{font-size:22px;line-height:2;text-align:right;color:#0b3b36;margin:0 0 8px}
+.nld-hbn{font-size:16px;line-height:1.8;white-space:pre-line}
+.nld-grade{margin-top:8px;font-size:13px;color:var(--g)}
+.nld-hnav{display:flex;gap:8px;margin:0 0 8px}
+.nld-prog{height:10px;background:var(--soft);border-radius:99px;overflow:hidden}
+.nld-prog div{height:100%;background:linear-gradient(90deg,var(--g),var(--g2))}
+.nld-lessons{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin:8px 0}
+.nld-lessons button{text-align:left;font-weight:600}
+.nld-lbody{font-size:16px;line-height:1.85;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 16px}
+.nld-lbody ul{padding-left:20px}
+.nld-letters{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:8px;margin:12px 0}
+.nld-letters button{display:flex;flex-direction:column;align-items:center;border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 4px;color:var(--tx)}
+.nld-letters button .nld-ar{font-size:34px;line-height:1.5}
+.nld-letters button small{font-size:12px}
+.nld-letters button.heavy{background:#fff7ed;border-color:#fed7aa}
+.nld-lcard{display:flex;gap:16px;align-items:flex-start;background:var(--soft);border-radius:14px;padding:12px 16px}
+.nld-lcard .big{font-size:64px;line-height:1.2;color:var(--g)}
+.nld-exrow{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:8px 0;background:#fff}
+.nld-prhead{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.nld-lnav{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.nld-q{font-size:20px;margin:10px 0 14px}
+.nld-qn{color:var(--mu)}
+.nld-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.nld-opts button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px;font-size:16px;color:var(--tx)}
+.nld-opts button.nld-ar{font-size:28px}
+.nld-opts button.ok{background:#dcfce7;border-color:#22c55e}
+.nld-opts button.bad{background:#fee2e2;border-color:#ef4444}
+.nld-score{font-size:22px;margin:12px 0}
+.nld-set{display:flex;flex-direction:column;gap:12px;margin:0 0 10px}
+.nld-set label{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nld-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:99980;display:none;gap:8px;align-items:center;background:#0f766e;color:#fff;border-radius:999px;padding:8px 10px 8px 16px;box-shadow:0 16px 40px -12px rgba(15,118,110,.7);font-family:"Hind Siliguri",system-ui,sans-serif}
+.nld-bar.show{display:flex}
+.nld-bar button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;width:34px;height:34px;font-size:15px;cursor:pointer}
+.nld-bar select{border:0;border-radius:999px;padding:6px 8px;font:inherit;font-size:13px}
+.nld-bar-t{font-size:14px;font-weight:600}
+.nld.nld-float{position:fixed;inset:5vh 4vw;z-index:99970;background:#fff;border-radius:18px;overflow:auto;box-shadow:0 30px 80px -20px rgba(0,0,0,.5);padding:14px}
+@media (max-width:640px){.nld-arv{line-height:2}.nld-list{grid-template-columns:1fr}.nld-bar{bottom:76px}}
+@media (prefers-color-scheme:dark){.nld-dark-auto{}}
