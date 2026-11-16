@@ -101,7 +101,9 @@
       getJSON(HAPI + 'ara-' + book + '/' + num + '.json', true).catch(function () { return null; })
     ]).then(function (r) {
       var b = r[0] && r[0].hadiths && r[0].hadiths[0], a = r[1] && r[1].hadiths && r[1].hadiths[0];
-      if (!b && !a) throw new Error('পাওয়া যায়নি');
+      if (b && !String(b.text || '').trim()) b = null;
+      if (a && !String(a.text || '').trim()) a = null;
+      if (!b && !a) throw new Error('এই নম্বরে এই সংস্করণে কোনো লেখা নেই');
       var h = b || a;
       return { book: book, num: num, bn: b && b.text, ar: a && a.text, grades: h.grades || [], ref: h.reference, arabicnumber: h.arabicnumber };
     });
@@ -112,7 +114,7 @@
       getJSON(HAPI + 'ara-' + book + '/sections/' + sec + '.json', true).catch(function () { return { hadiths: [] }; })
     ]).then(function (r) {
       var ar = {}; (r[1].hadiths || []).forEach(function (h) { ar[h.hadithnumber] = h.text; });
-      var list = (r[0].hadiths || []).length ? r[0].hadiths : r[1].hadiths || [];
+      var list = ((r[0].hadiths || []).length ? r[0].hadiths : r[1].hadiths || []).filter(function (h) { return String(h.text || '').trim() || ar[h.hadithnumber]; });
       return list.map(function (h) { return { book: book, num: h.hadithnumber, bn: r[0].hadiths.length ? h.text : '', ar: ar[h.hadithnumber] || '', grades: h.grades || [], arabicnumber: h.arabicnumber }; });
     });
   }
@@ -293,7 +295,7 @@
           return '<div class="nld-v" id="nld-v-' + x.a + '" data-a="' + x.a + '"><div class="nld-vtop"><span class="nld-num">' + bn(n) + ':' + bn(x.a) + '</span>' + (sajda ? '<span class="nld-sajda">۩ সিজদার আয়াত</span>' : '') +
             '<button data-act="play" title="এই আয়াত শুনুন">▶</button><button data-act="from" title="এখান থেকে শেষ পর্যন্ত">⏩</button><button data-act="words" title="শব্দে শব্দে">🔤</button><button data-act="meaning" title="বাংলা অর্থ শুনুন">🗣️</button><button data-act="copy" title="কপি">📋</button></div>' +
             '<div class="nld-arv nld-ar" dir="rtl" lang="ar">' + esc(x.ar) + ' <span class="nld-end">﴿' + arNum(x.a) + '﴾</span></div>' +
-            (settings.showTr ? '<div class="nld-bnv">' + esc(x.bn) + '</div>' : '') + '<div class="nld-words"></div></div>';
+            (settings.showTr ? '<div class="nld-bnv" data-nt="1">' + esc(x.bn) + '</div>' : '') + '<div class="nld-words"></div></div>';
         }).join('') + '</div><p class="nld-src">আরবি: Tanzil উসমানি (হাফস) · বাংলা অর্থ: ' + esc((TRANSLATIONS.filter(function (t) { return t.id === settings.tr; })[0] || {}).name) + ' · অডিও: everyayah.com</p>';
       bindControls(v);
       // Bismillah is shown from the same Tanzil text (verse 1:1), never typed here
@@ -343,7 +345,7 @@
     box.innerHTML = '<div class="nld-load">শব্দ লোড হচ্ছে…</div>';
     verseWords(s, a).then(function (ws) {
       box.innerHTML = '<div class="nld-wrow" dir="rtl">' + ws.map(function (w, i) {
-        return '<button class="nld-w" data-i="' + i + '"><span class="nld-ar">' + esc(w.ar) + '</span><small dir="ltr">' + esc(w.bn || '') + '</small></button>';
+        return '<button class="nld-w" data-i="' + i + '"><span class="nld-ar">' + esc(w.ar) + '</span><small dir="ltr" data-nt="1">' + esc(w.bn || '') + '</small></button>';
       }).join('') + '</div><small class="nld-hint">যে শব্দে চাপবেন, সেই শব্দটা ক্বারীর কণ্ঠে শুনবেন (quran.com শব্দে-শব্দে অডিও)।</small>';
       $$('.nld-w', box).forEach(function (b) { b.onclick = function () { var w = ws[+b.getAttribute('data-i')]; if (w.audio) { stopAll(); playUrl(w.audio); } }; });
     }).catch(function () { box.innerHTML = '<div class="nld-err">শব্দগুলো লোড করা যায়নি।</div>'; });
@@ -357,22 +359,29 @@
       state.book = book;
       var info = B[book];
       v.innerHTML = '<div class="nld-books">' + Object.keys(BOOKS).map(function (k) { return '<button data-book="' + k + '" class="' + (k === book ? 'on' : '') + '">' + BOOKS[k] + '</button>'; }).join('') + '</div>' +
-        '<form class="nld-hnum"><label>হাদিস নং (১–' + bn(info.last) + ') <input type="number" min="1" max="' + info.last + '"></label><button>খুলুন</button></form>' +
+        '<form class="nld-hnum"><label>হাদিস নং <input type="number" min="1" step="any"></label><select class="nld-hmode"><option value="own">এই সংস্করণের ক্রমিক নং (১–' + bn(info.last) + ')</option><option value="ar"' + (book === 'muslim' ? ' selected' : '') + '>আরবি/আন্তর্জাতিক নং (ফুয়াদ আবদুল বাকী)</option></select><button>খুলুন</button></form>' +
         '<div class="nld-hout"></div><h4>অধ্যায়সমূহ</h4><div class="nld-secs">' + info.sections.map(function (s) {
           return '<button data-sec="' + s[0] + '"><b>' + bn(s[0]) + '</b> ' + esc(s[1]) + ' <small>(' + bn(s[2]) + '–' + bn(s[3]) + ')</small></button>';
         }).join('') + '</div><p class="nld-src">উৎস: fawazahmed0/hadith-api (বাংলা ও আরবি সংস্করণ)। নম্বর এই সংস্করণের ক্রম অনুযায়ী; আরবি (আন্তর্জাতিক) নম্বরও পাশে দেখানো হয়।</p>';
       $$('[data-book]', v).forEach(function (b) { b.onclick = function () { state.book = b.getAttribute('data-book'); viewHadith(v); }; });
       var out = $('.nld-hout', v);
-      $('.nld-hnum', v).onsubmit = function (e) { e.preventDefault(); var n = +en($('input', this).value); if (n >= 1 && n <= info.last) showHadith(out, book, n); };
+      $('.nld-hnum', v).onsubmit = function (e) {
+        e.preventDefault();
+        var n = +en($('input', this).value);
+        if (!(n >= 1)) return;
+        if ($('.nld-hmode', v).value === 'ar') return byArabicNumber(out, book, n, info);
+        if (n <= info.last) showHadith(out, book, Math.floor(n));
+      };
       $$('[data-sec]', v).forEach(function (b) { b.onclick = function () { showSection(out, book, +b.getAttribute('data-sec'), b.textContent); out.scrollIntoView({ block: 'start' }); }; });
-      if (arg && arg.number) showHadith(out, book, arg.number);
+      // Muslim is cited by the Arabic number almost everywhere; Bukhari and Tirmidhi numbers are the same in both
+      if (arg && arg.number) { if (book === 'muslim') byArabicNumber(out, book, arg.number, info); else showHadith(out, book, arg.number); }
     }).catch(function (e) { fail(v, e); });
   }
   function hadithCard(h) {
     var g = (h.grades || []).map(function (x) { return esc(x.name) + ': <b>' + esc(x.grade) + '</b>'; }).join(' · ');
     return '<div class="nld-h"><div class="nld-hhead"><b>' + BOOKS[h.book] + ' · হাদিস নং ' + bn(h.num) + '</b>' + (h.arabicnumber && h.arabicnumber != h.num ? '<small>আরবি নং ' + bn(h.arabicnumber) + '</small>' : '') +
       '<button data-say="1" title="বাংলা পড়ে শোনাও">🗣️</button></div>' + (h.ar ? '<div class="nld-har nld-ar" dir="rtl" lang="ar">' + esc(h.ar) + '</div>' : '') +
-      (h.bn ? '<div class="nld-hbn">' + esc(h.bn) + '</div>' : '<div class="nld-hint">এই হাদিসের বাংলা অনুবাদ এই সংস্করণে নেই।</div>') + (g ? '<div class="nld-grade">মান: ' + g + '</div>' : '') + '</div>';
+      (h.bn ? '<div class="nld-hbn" data-nt="1">' + esc(h.bn) + '</div>' : '<div class="nld-hint">এই হাদিসের বাংলা অনুবাদ এই সংস্করণে নেই।</div>') + (g ? '<div class="nld-grade">মান: ' + g + '</div>' : '') + '</div>';
   }
   function bindSay(box, list) { $$('[data-say]', box).forEach(function (b, i) { b.onclick = function () { stopAll(); speakBn(list[i].bn || '', function () {}); }; }); }
   function showHadith(out, book, n) {
@@ -397,6 +406,18 @@
       $('.nld-filter', out).oninput = function () { q = this.value.trim(); paint(); };
       paint();
     }).catch(function (e) { out.innerHTML = '<div class="nld-err">অধ্যায় লোড করা যায়নি (' + esc(e.message) + ')।</div>'; });
+  }
+  // Muslim is usually cited by the Arabic (Fuad Abdul Baqi) number, e.g. "Muslim 8" = the hadith of Jibril (8.01 here)
+  function byArabicNumber(out, book, n, info) {
+    var sec = info.sections.filter(function (s) { return n >= Math.floor(s[4]) && n <= Math.floor(s[5]); })[0];
+    if (!sec) { out.innerHTML = '<div class="nld-err">আরবি নং ' + bn(n) + ' খুঁজে পাওয়া যায়নি।</div>'; return; }
+    out.innerHTML = '<div class="nld-load">খোঁজা হচ্ছে…</div>';
+    hadithSection(book, sec[0]).then(function (list) {
+      var hit = list.filter(function (h) { return Math.floor(+h.arabicnumber) === Math.floor(n) && (n % 1 === 0 || +h.arabicnumber === n); });
+      if (!hit.length) { out.innerHTML = '<div class="nld-err">আরবি নং ' + bn(n) + ' এই সংস্করণে পাওয়া যায়নি।</div>'; return; }
+      out.innerHTML = '<div class="nld-hint">আরবি নং ' + bn(n) + (hit.length > 1 ? ' — ' + bn(hit.length) + 'টি বর্ণনা (একই হাদিসের ভিন্ন সনদ)' : '') + '</div>' + hit.map(hadithCard).join('');
+      bindSay(out, hit);
+    }).catch(function (e) { out.innerHTML = '<div class="nld-err">লোড করা যায়নি (' + esc(e.message) + ')।</div>'; });
   }
   function searchHadithText(q) {
     var out = $('.nld-hout', view);
