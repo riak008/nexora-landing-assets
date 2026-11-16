@@ -197,7 +197,7 @@
 
 /* 1.3.1: karaoke, qaida, ampara, azan voices, districts */
 .nld-letters button{gap:2px;padding:10px 4px 8px}
-.nld-letters button .nld-ar{display:block;font-size:32px;line-height:1.9;height:58px;overflow:visible}
+.nld-letters button .nld-ar{display:block;font-size:30px;line-height:2.3;padding-bottom:4px}
 .nld-letters button small{display:block;line-height:1.3;margin-top:2px}
 .nld-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px}
 .nld-step{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:2px}
@@ -271,3 +271,13 @@
 .nlh-drow{display:flex;justify-content:space-between;align-items:center}
 .nlh-drow button{padding:8px 16px;border-radius:999px;border:0;background:#0f766e;color:#fff}
 @media(max-width:640px){.nld-step{padding:8px 4px;font-size:13px}.nld-drow{grid-template-columns:repeat(3,1fr)}.nlh-grid{gap:8px}.nlh-grid button{font-size:13px;padding:12px 4px;border-radius:16px}.nlh-grid button span{width:50px;height:50px;font-size:28px}.nlh-now b{font-size:16px}.nlh-times b{font-size:13px}.nlh-chip{font-size:14px;padding:8px 12px}}
+
+/* never let Arabic glyphs (descenders, harakat) run into the Bangla label under them */
+.nld button .nld-ar,.nld .nld-cell .nld-ar,.nld .nld-w .nld-ar{display:block;line-height:2.3;padding:0 2px 4px;white-space:nowrap}
+.nld button small,.nld .nld-cell small{display:block;position:relative;z-index:1;line-height:1.35;word-break:break-word}
+.nld .nld-ar{overflow-wrap:normal}
+.nld .nld-tok{line-height:inherit}
+.nld img,.nld svg{max-width:100%}
+.nld,.nld *{box-sizing:border-box}
+.nld-view{overflow-x:hidden}
+@media(max-width:420px){.nld-letters{grid-template-columns:repeat(4,1fr)}.nld-letters button .nld-ar{font-size:26px}.nlh-grid{grid-template-columns:repeat(4,1fr)}.nlh-times{gap:4px}.nlh-times small{font-size:11px}.nld-tabs{overflow-x:auto;flex-wrap:nowrap}}
