@@ -76,6 +76,8 @@ final class NLO_Deen {
 			$reply = sprintf( '📖 সূরা %s, আয়াত %s খুলছি, তিলাওয়াত শুরু হচ্ছে।', self::bn( $cmd['surah'] ), self::bn( $cmd['ayah'] ) );
 		} elseif ( 'surah' === $cmd['kind'] ) {
 			$reply = sprintf( '📖 সূরা %s খুলছি, শুরু থেকে তিলাওয়াত হবে।', self::bn( $cmd['surah'] ) );
+		} elseif ( 'prayer' === $cmd['kind'] ) {
+			$reply = '🕌 নামাজের সময়সূচি খুলছি — আজকের ওয়াক্ত, পরের নামাজ আর আযানের সেটিং সেখানে আছে।';
 		} else {
 			$names = array( 'bukhari' => 'সহীহ বুখারী', 'muslim' => 'সহীহ মুসলিম', 'tirmidhi' => 'জামে তিরমিযী' );
 			$reply = sprintf( '📚 %s, হাদিস নং %s খুলছি।', $names[ $cmd['book'] ], self::bn( $cmd['number'] ) );
@@ -115,6 +117,11 @@ final class NLO_Deen {
 					return array( 'kind' => 'hadith', 'book' => $key, 'number' => (int) $m[1] );
 				}
 			}
+		}
+
+		// "নামাজের সময় কখন", "মাগরিবের আযান", "সেহরির শেষ সময়" — not "নামাজের রিমাইন্ডার দাও" (that stays with Riak)
+		if ( ( preg_match( '/আযান|আজান|সেহরি|সাহরি|ইফতার|ওয়াক্ত|prayer time|azan/u', $t ) || ( preg_match( '/নামাজ|নামায|namaz/u', $t ) && preg_match( '/সময়|কখন|সূচি|time/u', $t ) ) ) && ! preg_match( '/সূরা|আয়াত|রিমাইন্ডার|reminder|অ্যালার্ম দাও/u', $t ) ) {
+			return array( 'kind' => 'prayer' );
 		}
 
 		$counts = self::counts();
