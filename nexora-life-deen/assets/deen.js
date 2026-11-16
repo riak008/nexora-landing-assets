@@ -708,6 +708,19 @@
       if (after && after.nextSibling) nav.insertBefore(b, after.nextSibling); else nav.appendChild(b);
       b.onclick = function (e) { e.preventDefault(); show(); window.scrollTo(0, 0); };
     });
+    // phone app: the "আরো" sheet (grid of tiles)
+    $$('.sh-grid').forEach(function (grid) {
+      if ($('[data-deen]', grid)) return;
+      var t = el('<button data-deen="1" data-nt="1" type="button"><span class="ic">📖</span><span class="bn">কুরআন ও হাদিস</span></button>');
+      var after = $('[data-tab="health"]', grid) || $('[data-tab="jobs"]', grid);
+      if (after && after.nextSibling) grid.insertBefore(t, after.nextSibling); else grid.insertBefore(t, grid.firstChild);
+      t.onclick = function (e) {
+        e.preventDefault();
+        var sh = $('#nlo-sheet');
+        if (sh) { sh.classList.remove('open'); setTimeout(function () { sh.hidden = true; }, 220); }
+        show(); window.scrollTo(0, 0);
+      };
+    });
     // the hub replaces #nlo-view on every tab change; when another tab is opened, our button turns off
     $$('[data-tab]').forEach(function (b) { if (!b._nld) { b._nld = 1; b.addEventListener('click', function () { $$('[data-deen]').forEach(function (x) { x.classList.remove('on'); }); stopAll(); }); } });
   }
