@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.5.1';
+	const VERSION = '1.5.2';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
@@ -71,7 +71,48 @@ final class NLO_Deen {
 			'time'         => time(),
 		);
 		file_put_contents( $dir . '/latest.json', wp_json_encode( $info ) ); // phpcs:ignore
+		self::eso_register();
 		return $info;
+	}
+
+	const ESO_NAME = 'এসো কুরআন শিখি (কুরআন, হাদিস, নামাজ)';
+
+	/**
+	 * Lists the app in the hub's Download Center the same way as the other apps (the License Manager's
+	 * app-release list), so it stays there whatever happens to the hub plugin's own files.
+	 * Runs after every upload and on admin pages (re-adds it if the list was ever rebuilt without it).
+	 */
+	public static function eso_register() {
+		$up   = wp_upload_dir();
+		$file = trailingslashit( $up['basedir'] ) . 'eso-quran/latest.json';
+		if ( ! file_exists( $file ) ) {
+			return;
+		}
+		$e = json_decode( (string) file_get_contents( $file ), true ); // phpcs:ignore
+		if ( empty( $e['url'] ) ) {
+			return;
+		}
+		$apk  = trailingslashit( $up['basedir'] ) . 'eso-quran/eso-quran-shikhi.apk';
+		$list = get_option( 'splm_app_releases', array() );
+		if ( ! is_array( $list ) ) {
+			$list = array();
+		}
+		$cur = isset( $list[ self::ESO_NAME ][0] ) ? $list[ self::ESO_NAME ][0] : array();
+		if ( ! empty( $cur['version_name'] ) && $cur['version_name'] === (string) $e['version_name'] && ! empty( $cur['sha256'] ) ) {
+			return;
+		}
+		$list[ self::ESO_NAME ] = array(
+			array(
+				'version_name' => (string) $e['version_name'],
+				'version_code' => (int) ( $e['version_code'] ?? 0 ),
+				'released_at'  => gmdate( 'Y-m-d H:i:s', (int) ( $e['time'] ?? time() ) ),
+				'url'          => (string) $e['url'],
+				'size'         => file_exists( $apk ) ? (int) filesize( $apk ) : (int) ( $e['size'] ?? 0 ),
+				'sha256'       => ! empty( $e['sha256'] ) ? (string) $e['sha256'] : ( file_exists( $apk ) ? (string) hash_file( 'sha256', $apk ) : '' ),
+				'notes'        => (string) ( $e['notes'] ?? '' ),
+			),
+		);
+		update_option( 'splm_app_releases', $list, false );
 	}
 
 	public static function tts( $req ) {
@@ -111,6 +152,7 @@ final class NLO_Deen {
 		add_action( 'init', array( __CLASS__, 'app_buffer' ), 0 );
 		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'command' ), 8, 3 );
 		add_action( 'rest_api_init', array( __CLASS__, 'tts_route' ) );
+		add_action( 'admin_init', array( __CLASS__, 'eso_register' ) );
 	}
 
 	/* ------------------------------------------------------------ UI */
