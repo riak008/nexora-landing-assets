@@ -127,6 +127,11 @@ final class NLO_Deen {
 		$dir  = trailingslashit( $up['basedir'] ) . 'nexora-tts';
 		$name = 'n2-' . md5( $tl . '|' . $rate . '|' . $q ) . '.mp3';
 		$file = $dir . '/' . $name;
+		if ( 'edge' === $req->get_param( 'engine' ) ) { // diagnostics: neural voice only, no cache
+			$t0  = microtime( true );
+			$out = self::edge_tts( $q, 'bn' === $tl ? 'bn-BD-NabanitaNeural' : ( 'ar' === $tl ? 'ar-SA-HamedNeural' : 'en-US-AriaNeural' ), $rate );
+			return array( 'bytes' => strlen( $out ), 'ms' => (int) ( ( microtime( true ) - $t0 ) * 1000 ), 'err' => self::$edge_err );
+		}
 		if ( ! file_exists( $file ) || filesize( $file ) < 200 ) {
 			wp_mkdir_p( $dir );
 			// natural (neural) voices first: Bangla Nabanita, Arabic Hamed; Google's voice only as a fallback
@@ -152,6 +157,7 @@ final class NLO_Deen {
 	}
 
 	/** Microsoft's neural "Read aloud" voices (the ones Edge uses): a small WebSocket client, returns mp3 bytes or ''. */
+	private static $edge_err = '';
 	private static function edge_tts( $text, $voice, $rate ) {
 		$token = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
 		$ticks = ( floor( ( time() + 11644473600 ) / 300 ) * 300 ) * 10000000;
@@ -161,6 +167,7 @@ final class NLO_Deen {
 		$ctx   = stream_context_create( array( 'ssl' => array( 'verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true ) ) );
 		$fp    = @stream_socket_client( 'tls://speech.platform.bing.com:443', $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $ctx );
 		if ( ! $fp ) {
+			self::$edge_err = 'connect: ' . $errno . ' ' . $errstr;
 			return '';
 		}
 		stream_set_timeout( $fp, 20 );
@@ -178,6 +185,7 @@ final class NLO_Deen {
 			$resp .= $c;
 		}
 		if ( false === strpos( $resp, ' 101 ' ) ) {
+			self::$edge_err = 'handshake: ' . substr( strtok( $resp, "\r\n" ), 0, 120 );
 			fclose( $fp );
 			return '';
 		}
