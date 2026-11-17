@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.5.4';
+	const VERSION = '1.5.5';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
@@ -160,10 +160,12 @@ final class NLO_Deen {
 	private static $edge_err = '';
 	private static function edge_tts( $text, $voice, $rate ) {
 		$token = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-		$ticks = ( floor( ( time() + 11644473600 ) / 300 ) * 300 ) * 10000000;
-		$gec   = strtoupper( hash( 'sha256', sprintf( '%.0f', $ticks ) . $token ) );
+		if ( ! class_exists( 'NLO_Deen_GEC' ) ) {
+			require_once __DIR__ . '/includes/gec.php';
+		}
+		$gec = NLO_Deen_GEC::token();
 		$cid   = str_replace( '-', '', wp_generate_uuid4() );
-		$path  = '/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=' . $token . '&Sec-MS-GEC=' . $gec . '&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=' . $cid;
+		$path  = '/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=' . $token . '&Sec-MS-GEC=' . $gec . '&Sec-MS-GEC-Version=2-143.0.3650.75&ConnectionId=' . $cid;
 		$ctx   = stream_context_create( array( 'ssl' => array( 'verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true ) ) );
 		$fp    = @stream_socket_client( 'tls://speech.platform.bing.com:443', $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $ctx );
 		if ( ! $fp ) {
@@ -174,7 +176,8 @@ final class NLO_Deen {
 		$key = base64_encode( random_bytes( 16 ) );
 		$hs  = "GET $path HTTP/1.1\r\nHost: speech.platform.bing.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $key\r\nSec-WebSocket-Version: 13\r\n"
 			. "Origin: chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold\r\nPragma: no-cache\r\nCache-Control: no-cache\r\n"
-			. "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0\r\n\r\n";
+			. "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0\r\n"
+			. "Accept-Language: en-US,en;q=0.9\r\nCookie: muid=" . strtoupper( bin2hex( random_bytes( 16 ) ) ) . ";\r\n\r\n";
 		fwrite( $fp, $hs );
 		$resp = '';
 		while ( ! feof( $fp ) && false === strpos( $resp, "\r\n\r\n" ) ) {
