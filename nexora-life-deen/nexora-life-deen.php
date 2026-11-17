@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.5.3';
+	const VERSION = '1.5.4';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
@@ -118,24 +118,28 @@ final class NLO_Deen {
 	public static function tts( $req ) {
 		$tl = (string) $req->get_param( 'tl' );
 		$q  = trim( wp_strip_all_tags( (string) $req->get_param( 'q' ) ) );
-		if ( ! in_array( $tl, array( 'ar', 'bn', 'en' ), true ) || '' === $q || mb_strlen( $q ) > 200 ) {
+		if ( ! in_array( $tl, array( 'ar', 'bn', 'en' ), true ) || '' === $q || mb_strlen( $q ) > 600 ) {
 			return new WP_Error( 'bad', 'bad request', array( 'status' => 400 ) );
 		}
+		$rate = (int) $req->get_param( 'rate' ); // percent, -50..+50
+		$rate = max( -50, min( 50, $rate ) );
 		$up   = wp_upload_dir();
 		$dir  = trailingslashit( $up['basedir'] ) . 'nexora-tts';
-		$name = md5( $tl . '|' . $q ) . '.mp3';
+		$name = 'n2-' . md5( $tl . '|' . $rate . '|' . $q ) . '.mp3';
 		$file = $dir . '/' . $name;
 		if ( ! file_exists( $file ) || filesize( $file ) < 200 ) {
 			wp_mkdir_p( $dir );
-			$res = wp_remote_get(
-				'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' . $tl . '&q=' . rawurlencode( $q ),
-				array(
-					'timeout'    => 15,
-					'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
-				)
-			);
-			$body = is_wp_error( $res ) ? '' : wp_remote_retrieve_body( $res );
-			if ( 200 !== (int) wp_remote_retrieve_response_code( $res ) || strlen( $body ) < 200 ) {
+			// natural (neural) voices first: Bangla Nabanita, Arabic Hamed; Google's voice only as a fallback
+			$voice = array( 'bn' => 'bn-BD-NabanitaNeural', 'ar' => 'ar-SA-HamedNeural', 'en' => 'en-US-AriaNeural' );
+			$body  = self::edge_tts( $q, $voice[ $tl ], $rate );
+			if ( strlen( $body ) < 200 && mb_strlen( $q ) <= 200 ) {
+				$res  = wp_remote_get(
+					'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' . $tl . '&q=' . rawurlencode( $q ),
+					array( 'timeout' => 15, 'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' )
+				);
+				$body = ( ! is_wp_error( $res ) && 200 === (int) wp_remote_retrieve_response_code( $res ) ) ? wp_remote_retrieve_body( $res ) : '';
+			}
+			if ( strlen( $body ) < 200 ) {
 				return new WP_Error( 'tts', 'tts unavailable', array( 'status' => 502 ) );
 			}
 			file_put_contents( $file, $body ); // phpcs:ignore WordPress.WP.AlternativeFunctions
@@ -145,6 +149,118 @@ final class NLO_Deen {
 		header( 'Content-Length: ' . filesize( $file ) );
 		readfile( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		exit;
+	}
+
+	/** Microsoft's neural "Read aloud" voices (the ones Edge uses): a small WebSocket client, returns mp3 bytes or ''. */
+	private static function edge_tts( $text, $voice, $rate ) {
+		$token = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+		$ticks = ( floor( ( time() + 11644473600 ) / 300 ) * 300 ) * 10000000;
+		$gec   = strtoupper( hash( 'sha256', sprintf( '%.0f', $ticks ) . $token ) );
+		$cid   = str_replace( '-', '', wp_generate_uuid4() );
+		$path  = '/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=' . $token . '&Sec-MS-GEC=' . $gec . '&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId=' . $cid;
+		$ctx   = stream_context_create( array( 'ssl' => array( 'verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true ) ) );
+		$fp    = @stream_socket_client( 'tls://speech.platform.bing.com:443', $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $ctx );
+		if ( ! $fp ) {
+			return '';
+		}
+		stream_set_timeout( $fp, 20 );
+		$key = base64_encode( random_bytes( 16 ) );
+		$hs  = "GET $path HTTP/1.1\r\nHost: speech.platform.bing.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $key\r\nSec-WebSocket-Version: 13\r\n"
+			. "Origin: chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold\r\nPragma: no-cache\r\nCache-Control: no-cache\r\n"
+			. "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0\r\n\r\n";
+		fwrite( $fp, $hs );
+		$resp = '';
+		while ( ! feof( $fp ) && false === strpos( $resp, "\r\n\r\n" ) ) {
+			$c = fread( $fp, 1024 );
+			if ( false === $c || '' === $c ) {
+				break;
+			}
+			$resp .= $c;
+		}
+		if ( false === strpos( $resp, ' 101 ' ) ) {
+			fclose( $fp );
+			return '';
+		}
+		$extra = substr( $resp, strpos( $resp, "\r\n\r\n" ) + 4 );
+		$send  = function ( $payload ) use ( $fp ) {
+			$len  = strlen( $payload );
+			$head = chr( 0x81 );
+			if ( $len < 126 ) {
+				$head .= chr( 0x80 | $len );
+			} elseif ( $len < 65536 ) {
+				$head .= chr( 0x80 | 126 ) . pack( 'n', $len );
+			} else {
+				$head .= chr( 0x80 | 127 ) . pack( 'J', $len );
+			}
+			$mask = random_bytes( 4 );
+			$out  = '';
+			for ( $i = 0; $i < $len; $i++ ) {
+				$out .= $payload[ $i ] ^ $mask[ $i % 4 ];
+			}
+			fwrite( $fp, $head . $mask . $out );
+		};
+		$ts = gmdate( 'D M d Y H:i:s' ) . ' GMT+0000 (Coordinated Universal Time)';
+		$send( "X-Timestamp:$ts\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" . '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}' );
+		$lang = substr( $voice, 0, 5 );
+		$ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='$lang'><voice name='$voice'><prosody pitch='+0Hz' rate='" . ( $rate >= 0 ? '+' : '' ) . $rate . "%' volume='+0%'>" . htmlspecialchars( $text, ENT_XML1 ) . '</prosody></voice></speak>';
+		$send( 'X-RequestId:' . $cid . "\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:" . $ts . "Z\r\nPath:ssml\r\n\r\n" . $ssml );
+		$buf   = $extra;
+		$audio = '';
+		$read  = function ( $n ) use ( $fp, &$buf ) {
+			while ( strlen( $buf ) < $n ) {
+				if ( feof( $fp ) ) {
+					return false;
+				}
+				$c = fread( $fp, 8192 );
+				if ( false === $c ) {
+					return false;
+				}
+				if ( '' === $c ) {
+					$meta = stream_get_meta_data( $fp );
+					if ( $meta['timed_out'] ) {
+						return false;
+					}
+					continue;
+				}
+				$buf .= $c;
+			}
+			$r   = substr( $buf, 0, $n );
+			$buf = substr( $buf, $n );
+			return $r;
+		};
+		$started = time();
+		while ( time() - $started < 25 ) {
+			$h = $read( 2 );
+			if ( false === $h ) {
+				break;
+			}
+			$op  = ord( $h[0] ) & 0x0f;
+			$len = ord( $h[1] ) & 0x7f;
+			if ( 126 === $len ) {
+				$len = unpack( 'n', $read( 2 ) )[1];
+			} elseif ( 127 === $len ) {
+				$len = unpack( 'J', $read( 8 ) )[1];
+			}
+			$data = $len ? $read( $len ) : '';
+			if ( false === $data ) {
+				break;
+			}
+			if ( 8 === $op ) {
+				break;
+			}
+			if ( 1 === $op && false !== strpos( $data, 'Path:turn.end' ) ) {
+				break;
+			}
+			if ( 2 === $op && strlen( $data ) > 2 ) {
+				$hl  = unpack( 'n', substr( $data, 0, 2 ) )[1];
+				$hdr = substr( $data, 2, $hl );
+				if ( false !== strpos( $hdr, 'Path:audio' ) ) {
+					$audio .= substr( $data, 2 + $hl );
+				}
+			}
+		}
+		fclose( $fp );
+		return $audio;
 	}
 
 	public static function init() {

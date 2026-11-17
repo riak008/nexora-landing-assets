@@ -385,3 +385,31 @@
 .nld-appver>span{font-size:30px}.nld-appver div{flex:1}.nld-appver small{display:block;color:#334155}
 .nld-appchk{padding:10px 14px;border-radius:999px;border:0;background:#0f766e;color:#fff;font-weight:600;cursor:pointer;white-space:nowrap}
 @media(max-width:520px){.nld-appver{flex-wrap:wrap}.nld-appchk{width:100%}}
+
+/* দোয়া, আমল, তাসবিহ */
+.nld-dcats{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.nld-dcats button{flex:0 0 auto;padding:9px 14px;border-radius:999px;border:1px solid #d1fae5;background:#fff;font-weight:600;cursor:pointer}
+.nld-dcats button.on{background:#0f766e;color:#fff;border-color:#0f766e}
+.nld-dlist{display:flex;flex-direction:column;gap:10px}
+.nld-dcard{background:#fff;border:1px solid #e7efeb;border-radius:18px;padding:14px 16px;box-shadow:0 6px 18px -14px rgba(15,23,42,.35)}
+.nld-dtop{display:flex;justify-content:space-between;align-items:center;gap:8px}.nld-dtop b{font-size:17px;color:#0f172a}
+.nld-dtop span{display:flex;gap:6px}.nld-dtop button{padding:7px 12px;border-radius:999px;border:1px solid #0f766e;background:#ecfdf5;color:#0f766e;font-weight:600;cursor:pointer}
+.nld-dcard .nld-ar{font-size:27px;line-height:2.2;text-align:right;margin:8px 0 4px;color:#0f172a}
+.nld-src{display:block;margin-top:8px;color:#64748b}
+.nld-amol{display:flex;flex-direction:column;gap:8px}
+.nld-acard{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #e7efeb;border-radius:16px;padding:12px;cursor:pointer}
+.nld-acard.lit{background:#fef9c3;border-color:#facc15}
+.nld-acard input{width:22px;height:22px;margin-top:14px;accent-color:#0f766e;flex:0 0 22px}
+.nld-acard p{margin:4px 0 0}
+.nld-acard:has(input:checked){background:#f0fdf4;border-color:#86efac}
+.nld-tasbih{text-align:center;padding:6px 0 20px}
+.nld-twords{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:10px}
+.nld-twords button{padding:8px 12px;border-radius:999px;border:1px solid #d1fae5;background:#fff;cursor:pointer}
+.nld-twords button.on{background:#0f766e;color:#fff}
+.nld-tword{font-size:36px;line-height:2;margin:6px 0}
+.nld-tbtn{width:220px;height:220px;border-radius:50%;border:0;background:radial-gradient(circle at 30% 25%,#34d399,#0f766e 60%,#064e3b);color:#fff;box-shadow:0 20px 40px -18px #0f766e,inset 0 -8px 20px rgba(0,0,0,.2);cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;transition:transform .08s}
+.nld-tbtn:active{transform:scale(.96)}.nld-tbtn b{font-size:64px;color:#fff;line-height:1}.nld-tbtn small{color:#d1fae5!important;font-size:18px!important}
+.nld-tbtn.done{background:radial-gradient(circle at 30% 25%,#fde68a,#d97706 60%,#92400e)}
+.nld-tctl{display:flex;gap:8px;justify-content:center;margin:16px 0 6px}
+.nld-tctl select,.nld-tctl button{padding:9px 12px;border-radius:12px;border:1px solid var(--line);background:#fff}
+.nlh-grid{grid-template-columns:repeat(4,1fr)}
