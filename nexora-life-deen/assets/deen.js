@@ -386,7 +386,7 @@
     state.tab = tab; state.arg = arg;
     $$('[data-dt]', root).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-dt') === tab); });
     view.innerHTML = '';
-    ({ home: viewHome, namaz: viewNamaz, quran: viewQuran, hadith: viewHadith, learn: viewLearn, quiz: viewQuiz, settings: viewSettings }[tab] || viewQuran)(view, arg);
+    ({ home: viewHome, salah: viewSalah, namaz: viewNamaz, quran: viewQuran, hadith: viewHadith, learn: viewLearn, quiz: viewQuiz, settings: viewSettings }[tab] || viewQuran)(view, arg);
   }
   function loading(v) { v.innerHTML = '<div class="nld-load">লোড হচ্ছে…</div>'; }
   function fail(v, e) { v.innerHTML = '<div class="nld-err">লোড করা যায়নি (' + esc(e && e.message) + ')। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।</div>'; }
@@ -776,11 +776,12 @@
     stopAll(); var token = {}; guideToken = token; var i = 0;
     (function next() {
       if (guideToken !== token) return;
-      $$('.nld-cell.lit,.nld-w.lit').forEach(function (x) { x.classList.remove('lit'); });
+      $$('.nld-cell.lit,.nld-w.lit,.nls-step.lit').forEach(function (x) { x.classList.remove('lit'); });
       var s = steps[i++]; if (!s) { guideToken = null; return; }
       if (s.cell) { s.cell.classList.add('lit'); try { s.cell.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
       var after = function () { setTimeout(next, s.gap == null ? 500 : s.gap); };
       if (s.bn) speakBn(s.bn, after);
+      else if (s.fn) { guideToken = null; s.fn(); }
       else if (s.qari) qariStep(s.cell, s.qari, s.gap, after);
       else if (s.ar) sayAr(s.ar, after);
       else if (s.url) { playUrl(s.url); var end = function () { player.removeEventListener('ended', end); after(); }; player.addEventListener('ended', end); }
@@ -855,10 +856,10 @@
     v.innerHTML = '<div class="nld-steps"><div class="nld-step on"><b>ধাপ ১</b>কায়দা<small>' + bn(done) + '/' + bn(LESSONS.length) + '</small></div><div class="nld-step" data-go="ampara"><b>ধাপ ২</b>আমপারা<small>' + bn(amN) + '/৩৭</small></div><div class="nld-step" data-go="quran"><b>ধাপ ৩</b>পূর্ণ কুরআন<small>১১৪ সূরা</small></div></div>' +
       '<h3>ধাপ ১: নূরানী কায়দা ও তাজবীদ</h3><div class="nld-prog"><div style="width:' + Math.round(done / LESSONS.length * 100) + '%"></div></div><p class="nld-hint">' + bn(done) + '/' + bn(LESSONS.length) + ' পাঠ শেষ। ক্রম অনুযায়ী এগোন: হরফ → হরকত → তানভীন → মাদ্দ → সাকিন → তাশদীদ → তাজবীদের নিয়ম। প্রতিটা পাঠে বাংলা ভয়েস গাইড, আরবি উচ্চারণ আর ক্বারীর কণ্ঠে উদাহরণ আছে।</p>' +
       '<div class="nld-lessons">' + LESSONS.map(function (l, i) { return '<button data-l="' + l.id + '">' + (p[l.id] ? '✅ ' : '⬜ ') + bn(i + 1) + '. ' + l.t + '</button>'; }).join('') + '</div>' +
-      '<div class="nld-stepnext"><button data-go="ampara">📗 ধাপ ২: আমপারা শুরু করুন ›</button><button data-go="quran">📖 ধাপ ৩: পূর্ণ কুরআন ›</button></div>' +
+      '<div class="nld-stepnext"><button data-go="salah">🧎 নামাজ শিক্ষা (ওযু ও পাঁচ ওয়াক্ত) ›</button><button data-go="ampara">📗 ধাপ ২: আমপারা শুরু করুন ›</button><button data-go="quran">📖 ধাপ ৩: পূর্ণ কুরআন ›</button></div>' +
       '<h4>🎧 প্র্যাকটিস: ছোট সূরা শব্দে শব্দে</h4><p class="nld-hint">প্রতিটা শব্দ শুনুন, তারপর নিজে বলুন। "সব শব্দ ধীরে" চাপলে পুরো আয়াত শব্দ ধরে ধরে বাজবে, প্রতি শব্দের পর আপনার বলার জন্য একটু বিরতি থাকবে।</p><div class="nld-lessons">' + PRACTICE.map(function (x) { return '<button data-pr="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div><div class="nld-prout"></div>';
     $$('[data-l]', v).forEach(function (b) { b.onclick = function () { viewLesson(v, b.getAttribute('data-l')); }; });
-    $$('[data-go]', v).forEach(function (b) { b.onclick = function () { stopAll(); if (b.getAttribute('data-go') === 'ampara') viewAmpara(v); else open('quran'); }; });
+    $$('[data-go]', v).forEach(function (b) { b.onclick = function () { stopAll(); var g = b.getAttribute('data-go'); if (g === 'ampara') viewAmpara(v); else if (g === 'salah') open('salah'); else open('quran'); }; });
     $$('[data-pr]', v).forEach(function (b) { b.onclick = function () { practice($('.nld-prout', v), +b.getAttribute('data-pr')); }; });
   }
 
@@ -1194,7 +1195,7 @@
       '</div>' +
       '<div class="nlh-times">' + FIVE.map(function (p) { return '<div class="' + (p === w.p ? 'on' : p === w.next ? 'nx' : '') + '"><small>' + PNAMES[p] + '</small><b>' + hm(t[p]) + '</b></div>'; }).join('') + '</div>' +
       '<div class="nlh-head"><span></span><b>ইলম ও আমল</b><button class="nlh-search" title="খুঁজুন">🔍</button></div>' +
-      '<div class="nlh-grid">' + [['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদীস'], ['namaz', '🕌', 'নামাযের সময়'], ['tilawat', '🎙️', 'তিলাওয়াত'], ['learn', '🎓', 'কুরআন শিক্ষা'], ['ampara', '📗', 'আমপারা'], ['azan', '📢', 'আযান'], ['quiz', '❓', 'কুইজ']].map(function (x) {
+      '<div class="nlh-grid">' + [['quran', '📖', 'কুরআন'], ['hadith', '📚', 'হাদীস'], ['namaz', '🕌', 'নামাযের সময়'], ['salah', '🧎', 'নামাজ শিক্ষা'], ['learn', '🎓', 'কুরআন শিক্ষা'], ['ampara', '📗', 'আমপারা'], ['azan', '📢', 'আযান'], ['quiz', '❓', 'কুইজ']].map(function (x) {
         return '<button data-home="' + x[0] + '"><span>' + x[1] + '</span>' + x[2] + '</button>';
       }).join('') + '</div>' +
       '<div class="nlh-head"><span class="o"></span><b>আজকের আয়াত</b></div><div class="nlh-card nlh-daily"></div>';
@@ -1216,6 +1217,150 @@
     }).catch(function () { var box = $('.nlh-daily', v); if (box) box.parentNode.removeChild(box); });
     clearInterval(homeTick);
     homeTick = setInterval(function () { if (state.tab !== 'home' || !document.body.contains(v)) { clearInterval(homeTick); return; } viewHome(v); }, 60000);
+  }
+  /* ------------------------------------------------------------ নামাজ শিক্ষা (হানাফি মাযহাব অনুযায়ী, ধাপে ধাপে) */
+  var DUA = {
+    takbir: ['اللّٰهُ أَكْبَرُ', 'আল্লাহু আকবার', 'আল্লাহ সবচেয়ে বড়।'],
+    sana: ['سُبْحَانَكَ اللّٰهُمَّ وَبِحَمْدِكَ، وَتَبَارَكَ اسْمُكَ، وَتَعَالَى جَدُّكَ، وَلَا إِلٰهَ غَيْرُكَ', 'সুবহানাকা আল্লাহুম্মা ওয়া বিহামদিকা, ওয়া তাবারাকাসমুকা, ওয়া তাআলা জাদ্দুকা, ওয়া লা ইলাহা গাইরুক।', 'হে আল্লাহ! আপনি পবিত্র, সব প্রশংসা আপনার; আপনার নাম বরকতময়, আপনার মর্যাদা অতি উচ্চ, আপনি ছাড়া কোনো ইলাহ নেই।'],
+    tauz: ['أَعُوذُ بِاللّٰهِ مِنَ الشَّيْطَانِ الرَّجِيمِ', 'আউযু বিল্লাহি মিনাশ শাইত্বানির রাজীম।', 'বিতাড়িত শয়তান থেকে আমি আল্লাহর আশ্রয় চাই।'],
+    bism: ['بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيمِ', 'বিসমিল্লাহির রাহমানির রাহীম।', 'পরম করুণাময়, অসীম দয়ালু আল্লাহর নামে।'],
+    ruku: ['سُبْحَانَ رَبِّيَ الْعَظِيمِ', 'সুবহানা রাব্বিয়াল আযীম (৩ বার)', 'আমার মহান রব পবিত্র।'],
+    sami: ['سَمِعَ اللّٰهُ لِمَنْ حَمِدَهُ', 'সামিআল্লাহু লিমান হামিদাহ', 'যে আল্লাহর প্রশংসা করে, আল্লাহ তা শোনেন।'],
+    hamd: ['رَبَّنَا لَكَ الْحَمْدُ', 'রাব্বানা লাকাল হামদ', 'হে আমাদের রব! সব প্রশংসা আপনারই।'],
+    sajda: ['سُبْحَانَ رَبِّيَ الْأَعْلٰى', 'সুবহানা রাব্বিয়াল আ‘লা (৩ বার)', 'আমার সুউচ্চ রব পবিত্র।'],
+    jalsa: ['اللّٰهُمَّ اغْفِرْ لِي', 'আল্লাহুম্মাগফিরলী (ইচ্ছা হলে)', 'হে আল্লাহ! আমাকে ক্ষমা করুন।'],
+    tash: ['التَّحِيَّاتُ لِلّٰهِ وَالصَّلَوَاتُ وَالطَّيِّبَاتُ، السَّلَامُ عَلَيْكَ أَيُّهَا النَّبِيُّ وَرَحْمَةُ اللّٰهِ وَبَرَكَاتُهُ، السَّلَامُ عَلَيْنَا وَعَلٰى عِبَادِ اللّٰهِ الصَّالِحِينَ، أَشْهَدُ أَنْ لَا إِلٰهَ إِلَّا اللّٰهُ، وَأَشْهَدُ أَنَّ مُحَمَّدًا عَبْدُهُ وَرَسُولُهُ', 'আত্তাহিয়্যাতু লিল্লাহি ওয়াস সালাওয়াতু ওয়াত তাইয়্যিবাতু, আসসালামু আলাইকা আইয়্যুহান নাবিয়্যু ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহ, আসসালামু আলাইনা ওয়া আলা ইবাদিল্লাহিস সালিহীন, আশহাদু আল লা ইলাহা ইল্লাল্লাহু ওয়া আশহাদু আন্না মুহাম্মাদান আবদুহু ওয়া রাসূলুহ।', 'সব সম্মান, সব ইবাদত ও সব পবিত্র কথা আল্লাহর জন্য। হে নবী! আপনার ওপর সালাম, আল্লাহর রহমত ও বরকত। আমাদের ওপর ও আল্লাহর নেক বান্দাদের ওপর সালাম। আমি সাক্ষ্য দিচ্ছি, আল্লাহ ছাড়া কোনো ইলাহ নেই এবং মুহাম্মাদ (সা.) তাঁর বান্দা ও রাসূল।'],
+    durud: ['اللّٰهُمَّ صَلِّ عَلٰى مُحَمَّدٍ وَعَلٰى آلِ مُحَمَّدٍ، كَمَا صَلَّيْتَ عَلٰى إِبْرَاهِيمَ وَعَلٰى آلِ إِبْرَاهِيمَ، إِنَّكَ حَمِيدٌ مَجِيدٌ، اللّٰهُمَّ بَارِكْ عَلٰى مُحَمَّدٍ وَعَلٰى آلِ مُحَمَّدٍ، كَمَا بَارَكْتَ عَلٰى إِبْرَاهِيمَ وَعَلٰى آلِ إِبْرَاهِيمَ، إِنَّكَ حَمِيدٌ مَجِيدٌ', 'আল্লাহুম্মা সাল্লি আলা মুহাম্মাদিও ওয়া আলা আলি মুহাম্মাদ, কামা সাল্লাইতা আলা ইবরাহীমা ওয়া আলা আলি ইবরাহীম, ইন্নাকা হামীদুম মাজীদ। আল্লাহুম্মা বারিক আলা মুহাম্মাদিও ওয়া আলা আলি মুহাম্মাদ, কামা বারাকতা আলা ইবরাহীমা ওয়া আলা আলি ইবরাহীম, ইন্নাকা হামীদুম মাজীদ।', 'হে আল্লাহ! মুহাম্মাদ (সা.) ও তাঁর পরিবারের ওপর রহমত বর্ষণ করুন, যেমন ইবরাহীম (আ.) ও তাঁর পরিবারের ওপর করেছেন; নিশ্চয়ই আপনি প্রশংসিত, মহিমান্বিত। হে আল্লাহ! মুহাম্মাদ (সা.) ও তাঁর পরিবারের ওপর বরকত দিন, যেমন ইবরাহীম (আ.) ও তাঁর পরিবারের ওপর দিয়েছেন; নিশ্চয়ই আপনি প্রশংসিত, মহিমান্বিত।'],
+    masura: ['اللّٰهُمَّ إِنِّي ظَلَمْتُ نَفْسِي ظُلْمًا كَثِيرًا، وَلَا يَغْفِرُ الذُّنُوبَ إِلَّا أَنْتَ، فَاغْفِرْ لِي مَغْفِرَةً مِنْ عِنْدِكَ، وَارْحَمْنِي، إِنَّكَ أَنْتَ الْغَفُورُ الرَّحِيمُ', 'আল্লাহুম্মা ইন্নী যালামতু নাফসী যুলমান কাসীরা, ওয়ালা ইয়াগফিরুয যুনূবা ইল্লা আনতা, ফাগফিরলী মাগফিরাতাম মিন ইনদিকা, ওয়ারহামনী, ইন্নাকা আনতাল গাফূরুর রাহীম।', 'হে আল্লাহ! আমি নিজের ওপর অনেক জুলুম করেছি, আর আপনি ছাড়া কেউ গুনাহ মাফ করতে পারে না। তাই নিজ দয়ায় আমাকে ক্ষমা করুন ও রহম করুন; নিশ্চয়ই আপনি ক্ষমাশীল, দয়ালু।'],
+    salam: ['السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللّٰهِ', 'আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহ', 'আপনাদের ওপর শান্তি ও আল্লাহর রহমত বর্ষিত হোক।'],
+    qunut: ['اللّٰهُمَّ إِنَّا نَسْتَعِينُكَ وَنَسْتَغْفِرُكَ، وَنُؤْمِنُ بِكَ وَنَتَوَكَّلُ عَلَيْكَ، وَنُثْنِي عَلَيْكَ الْخَيْرَ، وَنَشْكُرُكَ وَلَا نَكْفُرُكَ، وَنَخْلَعُ وَنَتْرُكُ مَنْ يَفْجُرُكَ، اللّٰهُمَّ إِيَّاكَ نَعْبُدُ، وَلَكَ نُصَلِّي وَنَسْجُدُ، وَإِلَيْكَ نَسْعٰى وَنَحْفِدُ، وَنَرْجُو رَحْمَتَكَ، وَنَخْشٰى عَذَابَكَ، إِنَّ عَذَابَكَ بِالْكُفَّارِ مُلْحِقٌ', 'আল্লাহুম্মা ইন্না নাসতাঈনুকা ওয়া নাসতাগফিরুকা, ওয়া নু’মিনু বিকা ওয়া নাতাওয়াক্কালু আলাইকা, ওয়া নুসনী আলাইকাল খাইর, ওয়া নাশকুরুকা ওয়ালা নাকফুরুকা, ওয়া নাখলাউ ওয়া নাতরুকু মাই ইয়াফজুরুক। আল্লাহুম্মা ইয়্যাকা না‘বুদু, ওয়া লাকা নুসাল্লী ওয়া নাসজুদু, ওয়া ইলাইকা নাসআ ওয়া নাহফিদু, ওয়া নারজূ রাহমাতাকা, ওয়া নাখশা আযাবাকা, ইন্না আযাবাকা বিল কুফফারি মুলহিক।', 'হে আল্লাহ! আমরা আপনার সাহায্য ও ক্ষমা চাই, আপনার ওপর ঈমান আনি ও ভরসা করি, আপনার উত্তম প্রশংসা করি, কৃতজ্ঞ থাকি, অকৃতজ্ঞ হই না; যে আপনার অবাধ্য হয় তাকে আমরা ত্যাগ করি। হে আল্লাহ! আমরা আপনারই ইবাদত করি, আপনার জন্যই নামাজ পড়ি ও সিজদা করি, আপনার দিকেই ছুটে চলি; আপনার রহমত আশা করি, আপনার শাস্তিকে ভয় করি; নিশ্চয়ই আপনার শাস্তি কাফেরদের ওপর আসবেই।']
+  };
+  // the five daily prayers: their parts (Hanafi, as prayed in Bangladesh)
+  var SALAH = {
+    fajr: { n: 'ফজর', parts: [['sunnah', 2, 'সুন্নাতে মুয়াক্কাদা'], ['fard', 2, 'ফরজ']], note: 'সুবহে সাদিক থেকে সূর্যোদয়ের আগ পর্যন্ত। ফজরের দুই রাকাত সুন্নত খুব গুরুত্বপূর্ণ।' },
+    dhuhr: { n: 'যোহর', parts: [['sunnah', 4, 'সুন্নাতে মুয়াক্কাদা'], ['fard', 4, 'ফরজ'], ['sunnah', 2, 'সুন্নাতে মুয়াক্কাদা'], ['nafl', 2, 'নফল (ইচ্ছা হলে)']], note: 'সূর্য মাথার ওপর থেকে একটু হেলে যাওয়ার পর থেকে আসরের আগ পর্যন্ত। জুমার দিন যোহরের বদলে জুমা।' },
+    asr: { n: 'আসর', parts: [['sunnah', 4, 'সুন্নাতে গায়রে মুয়াক্কাদা (ইচ্ছা হলে)'], ['fard', 4, 'ফরজ']], note: 'আসরের ওয়াক্ত থেকে সূর্য হলুদ হওয়ার আগে পড়ে নিন; সূর্যাস্তের সময় নামাজ মাকরূহ।' },
+    maghrib: { n: 'মাগরিব', parts: [['fard', 3, 'ফরজ'], ['sunnah', 2, 'সুন্নাতে মুয়াক্কাদা'], ['nafl', 2, 'নফল (ইচ্ছা হলে)']], note: 'সূর্যাস্তের পরপরই; দেরি না করা উত্তম।' },
+    isha: { n: 'ইশা', parts: [['sunnah', 4, 'সুন্নাতে গায়রে মুয়াক্কাদা (ইচ্ছা হলে)'], ['fard', 4, 'ফরজ'], ['sunnah', 2, 'সুন্নাতে মুয়াক্কাদা'], ['nafl', 2, 'নফল (ইচ্ছা হলে)'], ['witr', 3, 'বিতর (ওয়াজিব)'], ['nafl', 2, 'নফল (ইচ্ছা হলে)']], note: 'মাগরিবের ওয়াক্ত শেষ হলে শুরু; মধ্যরাতের আগে পড়ে নেওয়া উত্তম। বিতর ওয়াজিব — বাদ দেবেন না।' }
+  };
+  var KIND_BN = { fard: 'ফরজ', sunnah: 'সুন্নত', nafl: 'নফল', witr: 'বিতর' };
+  /** Every step of one prayer, rakat by rakat. */
+  function salahSteps(waqt, kind, rakat) {
+    var W = SALAH[waqt].n, K = KIND_BN[kind], S = [];
+    var add = function (pos, title, how, dua, extra) { S.push({ pos: pos, t: title, how: how, dua: dua ? DUA[dua] : null, q: extra && extra.q, r: extra && extra.r }); };
+    add('🧍', 'নিয়ত', 'কিবলামুখী হয়ে সোজা দাঁড়ান, দুই পায়ের মাঝে চার আঙুল পরিমাণ ফাঁকা রাখুন, দৃষ্টি সিজদার জায়গায়। মনে মনে নিয়ত করুন: "আমি ' + W + 'ের ' + bn(rakat) + ' রাকাত ' + K + ' নামাজ আল্লাহর জন্য কিবলামুখী হয়ে আদায় করছি।" নিয়ত মনের কাজ, মুখে আরবিতে বলা জরুরি নয়।');
+    for (var r = 1; r <= rakat; r++) {
+      var R = 'রাকাত ' + bn(r) + ' — ';
+      if (r === 1) {
+        add('🙌', R + 'তাকবীরে তাহরীমা', 'পুরুষ দুই হাত কানের লতি পর্যন্ত তুলবেন (হাতের তালু কিবলার দিকে), মহিলা কাঁধ পর্যন্ত। বলুন "আল্লাহু আকবার", তারপর পুরুষ নাভির নিচে আর মহিলা বুকের ওপর ডান হাত বাম হাতের ওপর রেখে বাঁধুন।', 'takbir', { r: r });
+        add('🧍', R + 'সানা', 'হাত বাঁধা অবস্থায় চুপে চুপে সানা পড়ুন।', 'sana', { r: r });
+        add('🧍', R + 'তাআউয', 'আউযুবিল্লাহ পড়ুন (শুধু প্রথম রাকাতে)।', 'tauz', { r: r });
+      }
+      add('🧍', R + 'বিসমিল্লাহ', 'প্রতি রাকাতে সূরা ফাতিহার আগে বিসমিল্লাহ পড়ুন।', 'bism', { r: r });
+      add('📖', R + 'সূরা ফাতিহা', 'সূরা ফাতিহা পড়ুন। শেষে চুপে চুপে "আমীন" বলুন। ▶ চেপে ক্বারীর তিলাওয়াত শুনুন।', null, { q: [1, 1, 7], r: r });
+      var needSurah = kind !== 'fard' || r <= 2;
+      if (needSurah) add('📖', R + 'সূরা মিলানো', 'ফাতিহার পর যেকোনো একটি সূরা বা কমপক্ষে ছোট তিন আয়াত পড়ুন। যেমন সূরা ইখলাস (নিচে ▶ চেপে শুনুন)। ' + (kind === 'fard' ? 'ফরজের তৃতীয়-চতুর্থ রাকাতে শুধু ফাতিহা পড়তে হয়।' : 'সুন্নত, নফল ও বিতরের প্রতি রাকাতে সূরা মেলাতে হয়।'), null, { q: [112, 1, 4], r: r });
+      else add('ℹ️', R + 'শুধু সূরা ফাতিহা', 'ফরজের ' + bn(r) + ' নম্বর রাকাতে ফাতিহার পর আর কোনো সূরা মেলাতে হয় না; ফাতিহা শেষ করেই রুকুতে যান।', null, { r: r });
+      if (kind === 'witr' && r === 3) {
+        add('🙌', R + 'দোয়া কুনুতের তাকবীর', 'সূরা মেলানোর পর রুকুতে না গিয়ে আবার "আল্লাহু আকবার" বলে কান পর্যন্ত হাত তুলে বেঁধে নিন।', 'takbir', { r: r });
+        add('🤲', R + 'দোয়া কুনুত', 'হাত বাঁধা অবস্থায় দোয়া কুনুত পড়ুন। মুখস্থ না থাকলে আপাতত "রাব্বানা আতিনা ফিদ্দুনইয়া হাসানাহ…" বা তিনবার "আল্লাহুম্মাগফিরলী" পড়তে পারেন, আর কুনুত মুখস্থ করতে থাকুন।', 'qunut', { r: r });
+      }
+      add('🙇', R + 'রুকু', '"আল্লাহু আকবার" বলে রুকুতে যান: পিঠ ও মাথা সমান করে, হাতের আঙুল ফাঁক রেখে হাঁটু ধরুন। কমপক্ষে তিনবার পড়ুন:', 'ruku', { r: r });
+      add('🧍', R + 'কওমা (রুকু থেকে ওঠা)', '"সামিআল্লাহু লিমান হামিদাহ" বলতে বলতে সোজা হয়ে দাঁড়ান, তারপর বলুন "রাব্বানা লাকাল হামদ"। পুরোপুরি সোজা হয়ে এক মুহূর্ত থামুন।', 'sami', { r: r });
+      add('🧍', R + 'রাব্বানা লাকাল হামদ', 'দাঁড়ানো অবস্থায় বলুন:', 'hamd', { r: r });
+      add('🛐', R + 'প্রথম সিজদা', '"আল্লাহু আকবার" বলে সিজদায় যান: আগে হাঁটু, তারপর হাত, তারপর নাক ও কপাল মাটিতে রাখুন; দুই হাতের মাঝে মুখ, আঙুল কিবলামুখী, পায়ের আঙুল মাটিতে। কমপক্ষে তিনবার পড়ুন:', 'sajda', { r: r });
+      add('🧎', R + 'জলসা (দুই সিজদার মাঝে বসা)', '"আল্লাহু আকবার" বলে সোজা হয়ে বসুন, এক মুহূর্ত স্থির থাকুন। চাইলে পড়ুন:', 'jalsa', { r: r });
+      add('🛐', R + 'দ্বিতীয় সিজদা', '"আল্লাহু আকবার" বলে আবার সিজদায় যান এবং তিনবার পড়ুন:', 'sajda', { r: r });
+      var sit = (r === 2 && rakat > 2), last = r === rakat;
+      if (sit) {
+        add('🧎', R + 'প্রথম বৈঠক', '"আল্লাহু আকবার" বলে বসুন (পুরুষ বাম পা বিছিয়ে তার ওপর বসবেন, ডান পা খাড়া; মহিলা দুই পা ডান দিকে বের করে বসবেন)। শুধু আত্তাহিয়্যাতু পড়ুন। "আশহাদু আল লা ইলাহা" বলার সময় ডান হাতের শাহাদাত আঙুল তুলুন।', 'tash', { r: r });
+        add('🧍', R + 'তৃতীয় রাকাতের জন্য দাঁড়ানো', '"আল্লাহু আকবার" বলে সোজা উঠে দাঁড়ান এবং হাত বাঁধুন।' + (kind !== 'fard' ? ' (সুন্নত/নফলে চাইলে এখানে দরুদও পড়তে পারেন — হানাফি মতে ৪ রাকাত সুন্নাতে মুয়াক্কাদায় প্রথম বৈঠকে শুধু আত্তাহিয়্যাতু।)' : ''), null, { r: r });
+      } else if (!last) {
+        add('🧍', R + 'পরের রাকাতের জন্য দাঁড়ানো', '"আল্লাহু আকবার" বলে সোজা উঠে দাঁড়ান এবং হাত বাঁধুন।', null, { r: r });
+      }
+      if (last) {
+        add('🧎', 'শেষ বৈঠক — আত্তাহিয়্যাতু', '"আল্লাহু আকবার" বলে বসুন এবং আত্তাহিয়্যাতু পড়ুন। "আশহাদু আল লা ইলাহা" বলার সময় শাহাদাত আঙুল তুলুন।', 'tash', { r: r });
+        add('🧎', 'শেষ বৈঠক — দরুদ শরীফ', 'এরপর দরুদে ইবরাহীম পড়ুন:', 'durud', { r: r });
+        add('🧎', 'শেষ বৈঠক — দোয়া মাসূরা', 'তারপর দোয়া মাসূরা পড়ুন:', 'masura', { r: r });
+        add('↪️', 'সালাম', 'প্রথমে ডান দিকে মুখ ফিরিয়ে, তারপর বাম দিকে মুখ ফিরিয়ে বলুন — এতে নামাজ শেষ হয়।', 'salam', { r: r });
+      }
+    }
+    return S;
+  }
+  var WUDU = [
+    ['🤲', 'নিয়ত ও বিসমিল্লাহ', 'মনে মনে ওযুর নিয়ত করুন এবং "বিসমিল্লাহ" বলে শুরু করুন।'],
+    ['👐', 'দুই হাত কবজি পর্যন্ত ধোয়া', 'প্রথমে ডান, তারপর বাম হাত কবজি পর্যন্ত তিনবার ধুয়ে নিন, আঙুলের ফাঁক খিলাল করুন।'],
+    ['👄', 'কুলি করা', 'তিনবার ভালো করে কুলি করুন (রোজা না থাকলে গড়গড়া করুন)।'],
+    ['👃', 'নাকে পানি দেওয়া', 'ডান হাতে তিনবার নাকে পানি দিন এবং বাম হাতে ঝেড়ে পরিষ্কার করুন।'],
+    ['🙂', 'মুখমণ্ডল ধোয়া (ফরজ)', 'কপালের চুলের গোড়া থেকে থুতনির নিচ পর্যন্ত এবং এক কানের লতি থেকে অন্য কানের লতি পর্যন্ত পুরো মুখ তিনবার ধুয়ে নিন। দাড়ি থাকলে খিলাল করুন।'],
+    ['💪', 'দুই হাত কনুইসহ ধোয়া (ফরজ)', 'প্রথমে ডান, তারপর বাম হাত আঙুলের মাথা থেকে কনুইসহ তিনবার ধুয়ে নিন।'],
+    ['🧑', 'মাথা মাসাহ (ফরজ)', 'ভেজা হাতে মাথা মাসাহ করুন (কমপক্ষে মাথার এক-চতুর্থাংশ ফরজ; পুরো মাথা সুন্নত), তারপর কান ও ঘাড় মাসাহ করুন।'],
+    ['🦶', 'দুই পা টাখনুসহ ধোয়া (ফরজ)', 'প্রথমে ডান, তারপর বাম পা টাখনুসহ তিনবার ধুয়ে নিন, বাম হাতের কনিষ্ঠ আঙুল দিয়ে পায়ের আঙুল খিলাল করুন।'],
+    ['☝️', 'ওযু শেষের দোয়া', 'ওযু শেষে কালিমা শাহাদাত পড়ুন: "আশহাদু আল লা ইলাহা ইল্লাল্লাহু ওয়াহদাহু লা শারীকা লাহু, ওয়া আশহাদু আন্না মুহাম্মাদান আবদুহু ওয়া রাসূলুহ।"']
+  ];
+  var FARAIZ = '<p><b>নামাজের বাইরের ফরজ (৭টি):</b> শরীর পাক, কাপড় পাক, জায়গা পাক, সতর ঢাকা, কিবলামুখী হওয়া, ওয়াক্ত হওয়া, নিয়ত করা।</p><p><b>নামাজের ভেতরের ফরজ (৬টি):</b> তাকবীরে তাহরীমা, দাঁড়ানো (কিয়াম), কিরাত পড়া, রুকু, দুই সিজদা, শেষ বৈঠক।</p><p><b>ওয়াজিব (যেমন):</b> সূরা ফাতিহা পড়া, ফাতিহার সাথে সূরা মেলানো (ফরজের প্রথম দুই রাকাতে ও অন্যান্য নামাজের সব রাকাতে), প্রথম বৈঠক, দুই বৈঠকে আত্তাহিয়্যাতু, রুকু-সিজদায় স্থির থাকা, সালাম ফেরানো, বিতরে দোয়া কুনুত। ভুলে ওয়াজিব বাদ পড়লে শেষ বৈঠকে আত্তাহিয়্যাতুর পর ডান দিকে এক সালাম দিয়ে দুটি সাহু সিজদা করে আবার আত্তাহিয়্যাতু, দরুদ, দোয়া পড়ে সালাম ফেরান।</p>';
+  function salahDua(d) {
+    if (!d) return '';
+    return '<div class="nls-dua"><div class="nld-ar" dir="rtl" data-nt="1">' + esc(d[0]) + '</div><div class="nls-pr"><b>উচ্চারণ:</b> ' + esc(d[1]) + '</div><div class="nls-mn"><b>অর্থ:</b> ' + esc(d[2]) + '</div></div>';
+  }
+  function viewSalah(v, arg) {
+    arg = arg || {};
+    if (arg.waqt && arg.kind) return salahPlayer(v, arg.waqt, arg.kind, arg.rakat);
+    if (arg.wudu) {
+      v.innerHTML = '<button class="nld-back">← নামাজ শিক্ষা</button><h3>🚿 ওযু করার নিয়ম</h3><p class="nld-hint">ওযুর ফরজ ৪টি: মুখ ধোয়া, দুই হাত কনুইসহ ধোয়া, মাথার এক-চতুর্থাংশ মাসাহ, দুই পা টাখনুসহ ধোয়া। বাকিগুলো সুন্নত।</p><div class="nld-gbar"><button class="nld-gplay">🗣️ ধাপে ধাপে শুনুন</button><button class="nld-gstop">⏹ থামাও</button></div>' +
+        '<div class="nls-list">' + WUDU.map(function (w, i) { return '<div class="nls-step" data-i="' + i + '"><span class="nls-pos">' + w[0] + '</span><div><b>' + bn(i + 1) + '. ' + w[1] + '</b><p>' + w[2] + '</p></div></div>'; }).join('') + '</div>';
+      $('.nld-back', v).onclick = function () { stopAll(); viewSalah(v); };
+      $('.nld-gstop', v).onclick = function () { stopAll(); };
+      $('.nld-gplay', v).onclick = function () { guide(WUDU.map(function (w, i) { return { cell: $$('.nls-step', v)[i], bn: (i + 1) + '। ' + w[1] + '। ' + w[2], gap: 700 }; })); };
+      return;
+    }
+    v.innerHTML = '<div class="nls-hero"><div><small>ধাপে ধাপে, বাংলায়</small><b>🕌 নামাজ শিক্ষা</b><span>হানাফি মাযহাব অনুযায়ী (বাংলাদেশে প্রচলিত)। প্রতিটা ধাপে আরবি, বাংলা উচ্চারণ, অর্থ আর ভয়েস গাইড।</span></div></div>' +
+      '<div class="nls-cards"><button class="nls-card" data-wudu="1"><span>🚿</span><b>ওযু</b><small>নামাজের আগে</small></button>' +
+      FIVE.map(function (w) { var s = SALAH[w]; return '<button class="nls-card" data-w="' + w + '"><span>' + ({ fajr: '🌅', dhuhr: '☀️', asr: '🌤️', maghrib: '🌇', isha: '🌙' })[w] + '</span><b>' + s.n + '</b><small>' + s.parts.map(function (p) { return bn(p[1]); }).join(' + ') + ' রাকাত</small></button>'; }).join('') + '</div>' +
+      '<div class="nls-waqt"></div><details class="nld-pset"><summary>📋 নামাজের ফরজ ও ওয়াজিব</summary>' + FARAIZ + '</details>';
+    $('[data-wudu]', v).onclick = function () { viewSalah(v, { wudu: 1 }); };
+    $$('[data-w]', v).forEach(function (b) { b.onclick = function () {
+      var w = b.getAttribute('data-w'), s = SALAH[w], box = $('.nls-waqt', v);
+      $$('[data-w]', v).forEach(function (x) { x.classList.toggle('on', x === b); });
+      box.innerHTML = '<h3>' + s.n + 'ের নামাজ</h3><p class="nld-hint">' + s.note + '</p><div class="nls-parts">' + s.parts.map(function (p, i) { return '<button data-p="' + i + '"><b>' + bn(p[1]) + ' রাকাত</b><span>' + p[2] + '</span><small>ধাপে ধাপে শিখুন ›</small></button>'; }).join('') + '</div>';
+      $$('[data-p]', box).forEach(function (pb) { pb.onclick = function () { var p = s.parts[+pb.getAttribute('data-p')]; viewSalah(v, { waqt: w, kind: p[0], rakat: p[1] }); }; });
+      try { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+    }; });
+  }
+  function salahPlayer(v, waqt, kind, rakat) {
+    var steps = salahSteps(waqt, kind, rakat), i = 0, auto = false;
+    var title = SALAH[waqt].n + ' — ' + bn(rakat) + ' রাকাত ' + KIND_BN[kind];
+    v.innerHTML = '<button class="nld-back">← নামাজ শিক্ষা</button><h3>' + title + '</h3><div class="nld-prog"><div class="nls-bar"></div></div><div class="nls-card-big"></div>' +
+      '<div class="nls-nav"><button class="nls-prev">‹ আগের</button><button class="nls-say">🗣️ শুনুন</button><button class="nls-auto">▶ পুরো নামাজ গাইড</button><button class="nls-next">পরের ›</button></div>' +
+      '<details class="nld-pset"><summary>সব ধাপ (' + bn(steps.length) + ')</summary><ol class="nls-ol">' + steps.map(function (s, k) { return '<li data-k="' + k + '">' + s.pos + ' ' + esc(s.t) + '</li>'; }).join('') + '</ol></details>';
+    var card = $('.nls-card-big', v);
+    function show(k, speak) {
+      i = Math.max(0, Math.min(steps.length - 1, k)); var s = steps[i];
+      $('.nls-bar', v).style.width = Math.round((i + 1) / steps.length * 100) + '%';
+      card.innerHTML = '<div class="nls-top"><span class="nls-pos">' + s.pos + '</span><div><small>ধাপ ' + bn(i + 1) + '/' + bn(steps.length) + '</small><b>' + esc(s.t) + '</b></div></div><p class="nls-how">' + esc(s.how) + '</p>' + salahDua(s.dua) +
+        (s.q ? '<button class="nls-q">▶ ক্বারীর তিলাওয়াত শুনুন (সূরা ' + bn(s.q[0]) + ')</button>' : '');
+      $$('.nls-ol li', v).forEach(function (li) { li.classList.toggle('on', +li.getAttribute('data-k') === i); });
+      var q = $('.nls-q', card); if (q) q.onclick = function () { stopAll(); var list = []; for (var a = s.q[1]; a <= s.q[2]; a++) list.push({ s: s.q[0], a: a }); playQueue(list, 0); };
+      if (speak) say(s);
+    }
+    function say(s, done) {
+      var st = [{ bn: s.t + '। ' + s.how, gap: 300 }];
+      if (s.dua) st.push({ bn: 'উচ্চারণ: ' + s.dua[1], gap: 300 }, { bn: 'অর্থ: ' + s.dua[2], gap: 500 });
+      if (s.q) { var list = []; for (var a = s.q[1]; a <= s.q[2]; a++) st.push({ url: ayahUrl(s.q[0], a), gap: 200 }); }
+      if (done) st.push({ fn: done });
+      guide(st);
+    }
+    $('.nld-back', v).onclick = function () { auto = false; stopAll(); viewSalah(v); };
+    $('.nls-prev', v).onclick = function () { auto = false; stopAll(); show(i - 1); };
+    $('.nls-next', v).onclick = function () { auto = false; stopAll(); show(i + 1); };
+    $('.nls-say', v).onclick = function () { auto = false; say(steps[i]); };
+    $('.nls-auto', v).onclick = function () {
+      if (auto) { auto = false; stopAll(); this.textContent = '▶ পুরো নামাজ গাইড'; return; }
+      auto = true; var btn = this; btn.textContent = '⏸ থামাও';
+      (function run1() { if (!auto) return; show(i); say(steps[i], function () { if (!auto) return; if (i >= steps.length - 1) { auto = false; btn.textContent = '▶ পুরো নামাজ গাইড'; return; } i++; setTimeout(run1, 400); }); })();
+    };
+    $$('.nls-ol li', v).forEach(function (li) { li.onclick = function () { auto = false; stopAll(); show(+li.getAttribute('data-k')); try { card.scrollIntoView({ behavior: 'smooth' }); } catch (e) {} }; });
+    show(0);
   }
   function viewNamaz(v) {
     if (!window.NexoraPrayer) { v.innerHTML = '<div class="nld-load">লোড হচ্ছে…</div>'; setTimeout(function () { if (state.tab === 'namaz') viewNamaz(v); }, 600); return; }
