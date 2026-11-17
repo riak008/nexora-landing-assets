@@ -380,3 +380,8 @@
 .nls-nav .nls-auto{background:#0f766e;color:#fff;border-color:#0f766e}
 .nls-ol{margin:8px 0;padding-left:22px}.nls-ol li{padding:5px 0;cursor:pointer}.nls-ol li.on{color:#0f766e;font-weight:700}
 @media(max-width:640px){.nls-cards{grid-template-columns:repeat(3,1fr);gap:8px}.nls-nav{grid-template-columns:1fr 1fr}.nls-card b{font-size:15px}}
+
+.nld-appver{display:flex;align-items:center;gap:12px;background:linear-gradient(120deg,#ecfdf5,#fff);border:1px solid #a7f3d0;border-radius:18px;padding:12px 14px;margin:0 0 14px}
+.nld-appver>span{font-size:30px}.nld-appver div{flex:1}.nld-appver small{display:block;color:#334155}
+.nld-appchk{padding:10px 14px;border-radius:999px;border:0;background:#0f766e;color:#fff;font-weight:600;cursor:pointer;white-space:nowrap}
+@media(max-width:520px){.nld-appver{flex-wrap:wrap}.nld-appchk{width:100%}}

@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.5.2';
+	const VERSION = '1.5.3';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:

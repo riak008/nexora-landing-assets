@@ -1491,7 +1491,14 @@
     document.documentElement.style.setProperty('--nld-arfont', '"' + f + '"');
   }
   function viewSettings(v) {
-    v.innerHTML = '<div class="nld-set"><label>বাংলা অর্থ (অনুবাদ) <select class="nld-tr">' + TRANSLATIONS.map(function (t) { return '<option value="' + t.id + '"' + (t.id === settings.tr ? ' selected' : '') + '>' + t.name + '</option>'; }).join('') + '</select></label>' +
+    // the phone app: which version runs, and a button to look for a newer one
+    var N0 = window.NexoraLifeNative, appBox = '';
+    if (N0 && N0.appVersion) {
+      var eso = /EsoQuranApp/.test(navigator.userAgent);
+      appBox = '<div class="nld-appver"><span>📱</span><div><b>' + (eso ? 'এসো কুরআন শিখি' : 'Nexora Life') + ' অ্যাপ</b><small>এখন চলছে: <b>v' + esc(N0.appVersion()) + '</b><span class="nld-applatest"></span></small></div><button class="nld-appchk">🔄 সর্বশেষ ভার্সন দেখুন</button></div>';
+      if (eso) setTimeout(function () { getJSON(location.origin + '/wp-content/uploads/eso-quran/latest.json?t=' + Date.now()).then(function (j) { var e = $('.nld-applatest', v); if (e && j.version_name) e.innerHTML = ' · সর্বশেষ: <b>v' + esc(j.version_name) + '</b>' + (j.version_name === N0.appVersion() ? ' ✅' : ' — আপডেট আছে'); }).catch(function () {}); }, 50);
+    }
+    v.innerHTML = appBox + '<div class="nld-set"><label>বাংলা অর্থ (অনুবাদ) <select class="nld-tr">' + TRANSLATIONS.map(function (t) { return '<option value="' + t.id + '"' + (t.id === settings.tr ? ' selected' : '') + '>' + t.name + '</option>'; }).join('') + '</select></label>' +
       '<label>আরবি ফন্ট <select class="nld-arf">' + AR_FONTS.map(function (f) { return '<option value="' + f[0] + '"' + (f[0] === (settings.arFont || 'Amiri Quran') ? ' selected' : '') + '>' + f[1] + '</option>'; }).join('') + '</select></label>' +
       '<div class="nld-arfprev nld-ar" dir="rtl">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>' +
       '<label>আরবি লেখার আকার <input type="range" min="20" max="48" value="' + settings.font + '" class="nld-font"> <span class="nld-ar nld-fprev" style="font-size:' + settings.font + 'px">ٱلْحَمْدُ لِلَّهِ</span></label>' +
@@ -1500,6 +1507,7 @@
     bindControls(v);
     $('.nld-tr', v).onchange = function () { settings.tr = this.value; settings.trPicked = true; saveSettings(); };
     $('.nld-font', v).oninput = function () { settings.font = +this.value; saveSettings(); $('.nld-fprev', v).style.fontSize = this.value + 'px'; };
+    var chk = $('.nld-appchk', v); if (chk) chk.onclick = function () { try { N0.checkUpdate(); } catch (e) {} };
     $('.nld-arf', v).onchange = function () { settings.arFont = this.value; saveSettings(); applyArFont(); };
     $('.nld-st', v).onchange = function () { settings.showTr = this.checked; saveSettings(); };
     $('.nld-clear', v).onclick = function () { try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('nld_c_') === 0) localStorage.removeItem(k); }); } catch (e) {} for (var k in MEM) delete MEM[k]; this.textContent = '✓ মুছে ফেলা হয়েছে'; };
