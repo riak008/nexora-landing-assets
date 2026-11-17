@@ -125,7 +125,7 @@ final class NLO_Deen {
 		$rate = max( -50, min( 50, $rate ) );
 		$up   = wp_upload_dir();
 		$dir  = trailingslashit( $up['basedir'] ) . 'nexora-tts';
-		$name = 'n2-' . md5( $tl . '|' . $rate . '|' . $q ) . '.mp3';
+		$name = 'n3-' . md5( $tl . '|' . $rate . '|' . $q ) . '.mp3';
 		$file = $dir . '/' . $name;
 		if ( 'edge' === $req->get_param( 'engine' ) ) { // diagnostics: neural voice only, no cache
 			$t0  = microtime( true );
