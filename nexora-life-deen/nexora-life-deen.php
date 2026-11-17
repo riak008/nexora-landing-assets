@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class NLO_Deen {
 
-	const VERSION = '1.5.0';
+	const VERSION = '1.5.1';
 
 	/**
 	 * Spoken Bangla/Arabic for the lessons on computers that have no such voice:
@@ -66,6 +66,8 @@ final class NLO_Deen {
 			'version_code' => (int) $req->get_param( 'version_code' ),
 			'notes'        => sanitize_textarea_field( (string) $req->get_param( 'notes' ) ),
 			'url'          => trailingslashit( $up['baseurl'] ) . 'eso-quran/eso-quran-shikhi.apk',
+			'sha256'       => (string) hash_file( 'sha256', $dir . '/eso-quran-shikhi.apk' ),
+			'size'         => (int) filesize( $dir . '/eso-quran-shikhi.apk' ),
 			'time'         => time(),
 		);
 		file_put_contents( $dir . '/latest.json', wp_json_encode( $info ) ); // phpcs:ignore
